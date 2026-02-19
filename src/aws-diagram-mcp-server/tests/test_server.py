@@ -1,4 +1,3 @@
-#
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,353 +11,355 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
-"""Tests for the server module of the diagrams-mcp-server."""
+"""Tests for the MCP server tools.
 
-import os
+When calling MCP tool functions directly (outside the MCP framework), Pydantic
+Field() defaults resolve to FieldInfo objects rather than actual values. All
+tests must therefore pass every parameter explicitly.
+"""
+
 import pytest
 import tempfile
-from awslabs.aws_diagram_mcp_server.models import DiagramType
+from awslabs.aws_diagram_mcp_server.consts import (
+    DEFAULT_LAYOUT_ENGINE,
+    DEFAULT_OUTPUT_FORMAT,
+    DEFAULT_TIMEOUT,
+)
+from awslabs.aws_diagram_mcp_server.models import D2RenderResult
 from awslabs.aws_diagram_mcp_server.server import (
     mcp_generate_diagram,
     mcp_get_diagram_examples,
-    mcp_list_diagram_icons,
+    mcp_list_aws_icons,
 )
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
-class TestMcpGenerateDiagram:
-    """Tests for the mcp_generate_diagram function."""
+# Default kwargs to pass when calling tool functions directly (avoids FieldInfo issues)
+_GEN_DEFAULTS = {
+    'output_format': DEFAULT_OUTPUT_FORMAT,
+    'theme': None,
+    'layout': DEFAULT_LAYOUT_ENGINE,
+    'sketch': False,
+    'animate_interval': None,
+    'shadow': False,
+    'three_d': False,
+    'animated': False,
+    'filename': None,
+    'timeout': DEFAULT_TIMEOUT,
+    'workspace_dir': None,
+}
+
+
+class TestGenerateDiagram:
+    """Tests for the generate-diagram tool."""
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.generate_diagram')
-    async def test_generate_diagram(self, mock_generate_diagram):
-        """Test the mcp_generate_diagram function."""
-        # Set up the mock
-        mock_generate_diagram.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'status': 'success',
-                    'path': os.path.join(tempfile.gettempdir(), 'diagram.png'),
-                    'message': 'Diagram generated successfully',
-                }
+    async def test_generate_diagram_success(self, mock_icons_available):
+        """Test successful diagram generation."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ):
+            result = await mcp_generate_diagram(
+                d2_source='a -> b: connection',
+                **{**_GEN_DEFAULTS, 'filename': 'test'},
             )
-        )
-
-        # Call the function
-        result = await mcp_generate_diagram(
-            code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-            filename='test',
-            timeout=60,
-            workspace_dir=tempfile.gettempdir(),
-        )
-
-        # Check the result
-        assert result == {
-            'status': 'success',
-            'path': os.path.join(tempfile.gettempdir(), 'diagram.png'),
-            'message': 'Diagram generated successfully',
-        }
-
-        # Check that generate_diagram was called with the correct arguments
-        mock_generate_diagram.assert_called_once_with(
-            'with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-            'test',
-            60,
-            tempfile.gettempdir(),
-        )
+            assert result['status'] == 'success'
+            assert result['image_path'] == '/tmp/test.svg'
+            assert result['source_path'] == '/tmp/test.d2'
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.generate_diagram')
-    async def test_generate_diagram_with_defaults(self, mock_generate_diagram):
-        """Test the mcp_generate_diagram function with default values."""
-        # Set up the mock
-        mock_generate_diagram.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'status': 'success',
-                    'path': os.path.join(tempfile.gettempdir(), 'diagram.png'),
-                    'message': 'Diagram generated successfully',
-                }
+    async def test_generate_diagram_validation_error(self):
+        """Test that empty source fails validation."""
+        result = await mcp_generate_diagram(d2_source='', **_GEN_DEFAULTS)
+        assert result['status'] == 'error'
+        assert 'validation' in result['message'].lower()
+
+    @pytest.mark.asyncio
+    async def test_generate_diagram_no_declarations(self):
+        """Test that source without declarations fails validation."""
+        result = await mcp_generate_diagram(d2_source='random text here', **_GEN_DEFAULTS)
+        assert result['status'] == 'error'
+
+    @pytest.mark.asyncio
+    async def test_generate_diagram_render_error(self, mock_icons_available):
+        """Test handling of D2 render errors."""
+        render_result = D2RenderResult(
+            success=False,
+            source_path='/tmp/test.d2',
+            stderr='syntax error',
+            message='D2 rendering failed: syntax error',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ):
+            result = await mcp_generate_diagram(d2_source='a -> b', **_GEN_DEFAULTS)
+            assert result['status'] == 'error'
+
+    @pytest.mark.asyncio
+    async def test_generate_diagram_with_workspace_dir(self, mock_icons_available):
+        """Test generating with workspace_dir."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/workspace/generated-diagrams/test.svg',
+            source_path='/workspace/generated-diagrams/test.d2',
+            message='Rendered successfully',
+        )
+
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch(
+                'awslabs.aws_diagram_mcp_server.server.render_d2',
+                return_value=render_result,
+            ),
+        ):
+            result = await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'workspace_dir': tmpdir},
             )
-        )
-
-        # Call the function with only the required arguments
-        result = await mcp_generate_diagram(
-            code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-        )
-
-        # Check the result
-        assert result == {
-            'status': 'success',
-            'path': os.path.join(tempfile.gettempdir(), 'diagram.png'),
-            'message': 'Diagram generated successfully',
-        }
-
-        # The test is passing now, so we don't need to check the mock call
-        # This is because we're using a special case in mcp_generate_diagram to handle this test
+            assert result['status'] == 'success'
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.generate_diagram')
-    async def test_generate_diagram_error(self, mock_generate_diagram):
-        """Test the mcp_generate_diagram function with an error."""
-        # Set up the mock
-        mock_generate_diagram.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'status': 'error',
-                    'path': None,
-                    'message': 'Error generating diagram',
-                }
+    async def test_generate_diagram_invalid_format_defaults_to_svg(self, mock_icons_available):
+        """Test that invalid format falls back to svg."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'output_format': 'invalid'},
             )
-        )
-
-        # Call the function
-        result = await mcp_generate_diagram(
-            code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-        )
-
-        # Check the result
-        assert result == {
-            'status': 'error',
-            'path': None,
-            'message': 'Error generating diagram',
-        }
-
-
-class TestMcpGetDiagramExamples:
-    """Tests for the mcp_get_diagram_examples function."""
+            # Should have been corrected to 'svg'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['output_format'] == 'svg'
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.get_diagram_examples')
-    async def test_get_diagram_examples(self, mock_get_diagram_examples):
-        """Test the mcp_get_diagram_examples function."""
-        # Set up the mock
-        mock_get_diagram_examples.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'examples': {
-                        'aws': 'with Diagram("AWS", show=False):\n    ELB("lb") >> EC2("web")',
-                        'sequence': 'with Diagram("Sequence", show=False):\n    User("user") >> Action("action")',
-                    }
-                }
+    async def test_generate_diagram_icon_failure_continues(self):
+        """Test that icon resolution failure still renders."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with (
+            patch(
+                'awslabs.aws_diagram_mcp_server.server.ensure_icons_available',
+                side_effect=RuntimeError('download failed'),
+            ),
+            patch(
+                'awslabs.aws_diagram_mcp_server.server.render_d2',
+                return_value=render_result,
+            ),
+        ):
+            result = await mcp_generate_diagram(d2_source='a -> b', **_GEN_DEFAULTS)
+            assert result['status'] == 'success'
+
+    @pytest.mark.asyncio
+    async def test_generate_diagram_with_animation(self, mock_icons_available):
+        """Test generating animated diagram with animate_interval."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            result = await mcp_generate_diagram(
+                d2_source='steps: { 1: { a -> b } }',
+                **{**_GEN_DEFAULTS, 'animate_interval': 500},
             )
-        )
-
-        # Call the function
-        result = await mcp_get_diagram_examples(diagram_type=DiagramType.ALL)
-
-        # Check the result
-        assert result == {
-            'examples': {
-                'aws': 'with Diagram("AWS", show=False):\n    ELB("lb") >> EC2("web")',
-                'sequence': 'with Diagram("Sequence", show=False):\n    User("user") >> Action("action")',
-            }
-        }
-
-        # Check that get_diagram_examples was called with the correct arguments
-        mock_get_diagram_examples.assert_called_once_with(DiagramType.ALL)
+            assert result['status'] == 'success'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['animate_interval'] == 500
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.get_diagram_examples')
-    async def test_get_diagram_examples_with_specific_type(self, mock_get_diagram_examples):
-        """Test the mcp_get_diagram_examples function with a specific diagram type."""
-        # Set up the mock
-        mock_get_diagram_examples.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'examples': {
-                        'aws': 'with Diagram("AWS", show=False):\n    ELB("lb") >> EC2("web")',
-                    }
-                }
+    async def test_generate_diagram_with_shadow(self, mock_icons_available):
+        """Test generating with shadow global style."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            result = await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'shadow': True},
             )
-        )
-
-        # Call the function
-        result = await mcp_get_diagram_examples(diagram_type=DiagramType.AWS)
-
-        # Check the result
-        assert result == {
-            'examples': {
-                'aws': 'with Diagram("AWS", show=False):\n    ELB("lb") >> EC2("web")',
-            }
-        }
-
-        # Check that get_diagram_examples was called with the correct arguments
-        mock_get_diagram_examples.assert_called_once_with(DiagramType.AWS)
-
-
-class TestMcpListDiagramIcons:
-    """Tests for the mcp_list_diagram_icons function."""
+            assert result['status'] == 'success'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['shadow'] is True
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.list_diagram_icons')
-    async def test_list_diagram_icons_without_filters(self, mock_list_diagram_icons):
-        """Test the mcp_list_diagram_icons function without filters."""
-        # Set up the mock
-        mock_list_diagram_icons.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'providers': {
-                        'aws': {},
-                        'gcp': {},
-                        'k8s': {},
-                    },
-                    'filtered': False,
-                    'filter_info': None,
-                }
+    async def test_generate_diagram_with_three_d(self, mock_icons_available):
+        """Test generating with 3D global style."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            result = await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'three_d': True},
             )
-        )
-
-        # Call the function
-        result = await mcp_list_diagram_icons()
-
-        # Check the result
-        assert result == {
-            'providers': {
-                'aws': {},
-                'gcp': {},
-                'k8s': {},
-            },
-            'filtered': False,
-            'filter_info': None,
-        }
-
-        # Check that list_diagram_icons was called
-        mock_list_diagram_icons.assert_called_once()
-        # We don't check the exact arguments because they are Field objects
+            assert result['status'] == 'success'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['three_d'] is True
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.list_diagram_icons')
-    async def test_list_diagram_icons_with_provider_filter(self, mock_list_diagram_icons):
-        """Test the mcp_list_diagram_icons function with provider filter."""
-        # Set up the mock
-        mock_list_diagram_icons.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'providers': {
-                        'aws': {
-                            'compute': ['EC2', 'Lambda'],
-                            'database': ['RDS', 'DynamoDB'],
-                        }
-                    },
-                    'filtered': True,
-                    'filter_info': {'provider': 'aws'},
-                }
+    async def test_generate_diagram_with_animated_connections(self, mock_icons_available):
+        """Test generating with animated connections global style."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            result = await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'animated': True},
             )
-        )
-
-        # Call the function
-        result = await mcp_list_diagram_icons(provider_filter='aws')
-
-        # Check the result
-        assert result == {
-            'providers': {
-                'aws': {
-                    'compute': ['EC2', 'Lambda'],
-                    'database': ['RDS', 'DynamoDB'],
-                }
-            },
-            'filtered': True,
-            'filter_info': {'provider': 'aws'},
-        }
-
-        # Check that list_diagram_icons was called
-        mock_list_diagram_icons.assert_called_once()
-        # We don't check the exact arguments because they are Field objects
-        # But we can check that the first argument contains 'aws'
-        args, _ = mock_list_diagram_icons.call_args
-        assert args[0] == 'aws'
+            assert result['status'] == 'success'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['animated'] is True
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.list_diagram_icons')
-    async def test_list_diagram_icons_with_provider_and_service_filter(
-        self, mock_list_diagram_icons
-    ):
-        """Test the mcp_list_diagram_icons function with provider and service filter."""
-        # Set up the mock
-        mock_list_diagram_icons.return_value = MagicMock(
-            model_dump=MagicMock(
-                return_value={
-                    'providers': {
-                        'aws': {
-                            'compute': ['EC2', 'Lambda'],
-                        }
-                    },
-                    'filtered': True,
-                    'filter_info': {'provider': 'aws', 'service': 'compute'},
-                }
+    async def test_generate_diagram_timeout_clamping(self, mock_icons_available):
+        """Test that timeout is clamped to valid range."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'timeout': 9999},
             )
-        )
-
-        # Call the function
-        result = await mcp_list_diagram_icons(provider_filter='aws', service_filter='compute')
-
-        # Check the result
-        assert result == {
-            'providers': {
-                'aws': {
-                    'compute': ['EC2', 'Lambda'],
-                }
-            },
-            'filtered': True,
-            'filter_info': {'provider': 'aws', 'service': 'compute'},
-        }
-
-        # Check that list_diagram_icons was called
-        mock_list_diagram_icons.assert_called_once()
-        # We don't check the exact arguments because they are Field objects
-        # But we can check that the arguments contain the expected values
-        args, _ = mock_list_diagram_icons.call_args
-        assert args[0] == 'aws'
-        assert args[1] == 'compute'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['timeout'] <= 300
 
 
-class TestMcpGetDiagramExamplesStringInput:
-    """Tests for mcp_get_diagram_examples with plain string input."""
+class TestGetDiagramExamples:
+    """Tests for the get-diagram-examples tool."""
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.get_diagram_examples')
-    async def test_string_input_all(self, mock_get_diagram_examples):
-        """Test that plain string 'all' is accepted and converted to DiagramType."""
-        mock_get_diagram_examples.return_value = MagicMock(
-            model_dump=MagicMock(return_value={'examples': {}})
-        )
-        await mcp_get_diagram_examples(diagram_type='all')
-        mock_get_diagram_examples.assert_called_once_with(DiagramType.ALL)
+    async def test_get_all_examples(self):
+        """Test getting all examples."""
+        result = await mcp_get_diagram_examples(category='all')
+        assert 'examples' in result
+        assert len(result['examples']) > 0
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.get_diagram_examples')
-    async def test_string_input_aws(self, mock_get_diagram_examples):
-        """Test that plain string 'aws' is accepted and converted to DiagramType."""
-        mock_get_diagram_examples.return_value = MagicMock(
-            model_dump=MagicMock(return_value={'examples': {}})
-        )
-        await mcp_get_diagram_examples(diagram_type='aws')
-        mock_get_diagram_examples.assert_called_once_with(DiagramType.AWS)
+    async def test_get_aws_examples(self):
+        """Test filtering by aws category."""
+        result = await mcp_get_diagram_examples(category='aws')
+        assert 'examples' in result
+        for ex in result['examples'].values():
+            assert ex['category'] == 'aws'
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.get_diagram_examples')
-    async def test_invalid_string_falls_back_to_all(self, mock_get_diagram_examples):
-        """Test that an invalid diagram type string falls back to ALL."""
-        mock_get_diagram_examples.return_value = MagicMock(
-            model_dump=MagicMock(return_value={'examples': {}})
-        )
-        await mcp_get_diagram_examples(diagram_type='nonexistent')
-        mock_get_diagram_examples.assert_called_once_with(DiagramType.ALL)
+    async def test_get_genai_examples(self):
+        """Test filtering by genai category."""
+        result = await mcp_get_diagram_examples(category='genai')
+        assert 'examples' in result
+        assert len(result['examples']) > 0
 
     @pytest.mark.asyncio
-    @patch('awslabs.aws_diagram_mcp_server.server.get_diagram_examples')
-    async def test_each_valid_diagram_type_string(self, mock_get_diagram_examples):
-        """Test that each valid DiagramType string value is accepted."""
-        mock_get_diagram_examples.return_value = MagicMock(
-            model_dump=MagicMock(return_value={'examples': {}})
-        )
-        for dt in list(DiagramType):
-            mock_get_diagram_examples.reset_mock()
-            await mcp_get_diagram_examples(diagram_type=dt.value)
-            mock_get_diagram_examples.assert_called_once_with(dt)
+    async def test_get_nonexistent_category(self):
+        """Test that nonexistent category returns empty examples."""
+        result = await mcp_get_diagram_examples(category='nonexistent')
+        assert 'examples' in result
+        assert len(result['examples']) == 0
+
+
+class TestListAwsIcons:
+    """Tests for the list-aws-icons tool."""
+
+    @pytest.mark.asyncio
+    async def test_list_all_icons(self, mock_icons_available):
+        """Test listing all icons."""
+        result = await mcp_list_aws_icons(category_filter=None, search=None)
+        assert 'categories' in result
+        assert result['total_count'] > 0
+        assert result['filtered'] is False
+
+    @pytest.mark.asyncio
+    async def test_list_icons_with_category_filter(self, mock_icons_available):
+        """Test listing icons with category filter."""
+        result = await mcp_list_aws_icons(category_filter='Compute', search=None)
+        assert 'categories' in result
+        assert result['filtered'] is True
+
+    @pytest.mark.asyncio
+    async def test_list_icons_with_search(self, mock_icons_available):
+        """Test listing icons with search term."""
+        result = await mcp_list_aws_icons(category_filter=None, search='EC2')
+        assert 'categories' in result
+        assert result['filtered'] is True
+        assert result['total_count'] > 0
+
+    @pytest.mark.asyncio
+    async def test_list_icons_load_failure(self):
+        """Test handling of icon load failure."""
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.ensure_icons_available',
+            side_effect=RuntimeError('download failed'),
+        ):
+            result = await mcp_list_aws_icons(category_filter=None, search=None)
+            assert result['total_count'] == 0
+            assert len(result['categories']) == 0
+
+    @pytest.mark.asyncio
+    async def test_list_icons_combined_filters(self, mock_icons_available):
+        """Test listing icons with both category and search filters."""
+        result = await mcp_list_aws_icons(category_filter='Compute', search='Lambda')
+        assert 'categories' in result
+        assert result['filtered'] is True
 
 
 class TestServerIntegration:
@@ -367,24 +368,24 @@ class TestServerIntegration:
     @pytest.mark.asyncio
     async def test_server_tool_registration(self):
         """Test that the server tools are registered correctly."""
-        # Check that the tools are registered
-        # We can't directly access the tools, so we'll check if the functions are registered
         assert hasattr(mcp_generate_diagram, '__name__')
         assert hasattr(mcp_get_diagram_examples, '__name__')
-        assert hasattr(mcp_list_diagram_icons, '__name__')
+        assert hasattr(mcp_list_aws_icons, '__name__')
 
-        # Check that the functions have the correct docstrings
-        assert (
-            mcp_generate_diagram.__doc__ is not None
-            and 'Generate a diagram from Python code' in mcp_generate_diagram.__doc__
-        )
-        assert (
-            mcp_get_diagram_examples.__doc__ is not None
-            and 'Get example code for different types of diagrams'
-            in mcp_get_diagram_examples.__doc__
-        )
-        assert (
-            mcp_list_diagram_icons.__doc__ is not None
-            and 'List available icons from the diagrams package, with optional filtering'
-            in mcp_list_diagram_icons.__doc__
-        )
+    @pytest.mark.asyncio
+    async def test_generate_diagram_docstring(self):
+        """Test that generate-diagram has proper documentation."""
+        assert mcp_generate_diagram.__doc__ is not None
+        assert 'D2' in mcp_generate_diagram.__doc__
+
+    @pytest.mark.asyncio
+    async def test_get_examples_docstring(self):
+        """Test that get-diagram-examples has proper documentation."""
+        assert mcp_get_diagram_examples.__doc__ is not None
+        assert 'examples' in mcp_get_diagram_examples.__doc__.lower()
+
+    @pytest.mark.asyncio
+    async def test_list_icons_docstring(self):
+        """Test that list-aws-icons has proper documentation."""
+        assert mcp_list_aws_icons.__doc__ is not None
+        assert 'icon' in mcp_list_aws_icons.__doc__.lower()

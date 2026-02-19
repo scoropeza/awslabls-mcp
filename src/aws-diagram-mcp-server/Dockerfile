@@ -69,10 +69,13 @@ FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:50a58a006d3381e38160fc5bb4bbe
 ENV PATH="/app/.venv/bin:$PATH:/usr/sbin" \
     PYTHONUNBUFFERED=1
 
-# Install other tools as needed for the MCP server
-# Add non-root user and ability to change directory into /root
-RUN dnf install -y shadow-utils procps graphviz && \
+# Install D2 binary for diagram rendering
+ARG D2_VERSION=0.6.9
+RUN dnf install -y shadow-utils procps tar gzip && \
     dnf clean all && \
+    curl -fsSL "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-amd64.tar.gz" \
+    | tar -xz -C /usr/local && \
+    ln -s /usr/local/d2-v${D2_VERSION}/bin/d2 /usr/local/bin/d2 && \
     groupadd --force --system app && \
     useradd app -g app -d /app && \
     chmod o+x /root

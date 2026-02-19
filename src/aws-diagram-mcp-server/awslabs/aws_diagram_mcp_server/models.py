@@ -12,86 +12,86 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Models for the diagrams-mcp-server."""
+"""Pydantic models for the aws-diagram-mcp-server (D2-based)."""
 
-from enum import Enum
-from pydantic import BaseModel, Field, field_validator
-from typing import Dict, List, Literal, Optional
-
-
-class DiagramType(str, Enum):
-    """Enum for supported diagram types."""
-
-    AWS = 'aws'
-    SEQUENCE = 'sequence'
-    FLOW = 'flow'
-    CLASS = 'class'
-    K8S = 'k8s'
-    ONPREM = 'onprem'
-    CUSTOM = 'custom'
-    ALL = 'all'
+from pydantic import BaseModel, Field
+from typing import Literal
 
 
-class DiagramGenerateRequest(BaseModel):
-    """Request model for diagram generation."""
-
-    code: str = Field(..., description='Python code string using the diagrams package DSL')
-    filename: Optional[str] = Field(
-        None,
-        description='Output filename (without extension). If not provided, a random name will be generated.',
-    )
-    timeout: int = Field(90, description='Timeout in seconds for diagram generation', ge=1, le=300)
-    workspace_dir: Optional[str] = Field(
-        None,
-        description='The user\'s current workspace directory. If provided, diagrams will be saved to a "generated-diagrams" subdirectory.',
-    )
-
-    @field_validator('code')
-    @classmethod
-    def validate_code(cls, v):
-        """Validate that the code contains a Diagram definition."""
-        if 'Diagram(' not in v:
-            raise ValueError('Code must contain a Diagram definition')
-        return v
+# --- D2 Renderer Models ---
 
 
-class DiagramExampleRequest(BaseModel):
-    """Request model for diagram examples."""
+class D2VersionInfo(BaseModel):
+    """Information about the installed D2 binary."""
 
-    diagram_type: DiagramType = Field(
-        DiagramType.ALL,
-        description='Type of diagram example to return',
-    )
+    version: str = Field(..., description='D2 version string')
+    path: str = Field(..., description='Path to the D2 binary')
+
+
+class D2RenderResult(BaseModel):
+    """Result of a D2 render operation."""
+
+    success: bool = Field(..., description='Whether rendering succeeded')
+    image_path: str | None = Field(None, description='Path to the generated image file')
+    source_path: str | None = Field(None, description='Path to the saved .d2 source file')
+    stderr: str | None = Field(None, description='D2 stderr output (errors/warnings)')
+    message: str = Field(..., description='Human-readable result message')
+
+
+# --- Tool Request/Response Models ---
 
 
 class DiagramGenerateResponse(BaseModel):
-    """Response model for diagram generation."""
+    """Response from the generate-diagram tool."""
 
     status: Literal['success', 'error']
-    path: Optional[str] = None
-    message: str
+    image_path: str | None = Field(None, description='Path to the generated image file')
+    source_path: str | None = Field(None, description='Path to the saved .d2 source file')
+    message: str = Field(..., description='Human-readable status message')
+
+
+class DiagramExample(BaseModel):
+    """A single D2 diagram example."""
+
+    title: str = Field(..., description='Example title')
+    description: str = Field(..., description='What this example demonstrates')
+    d2_source: str = Field(..., description='D2 DSL source code')
+    category: str = Field(..., description='Example category')
+    uses_animation: bool = Field(False, description='Whether this example uses D2 animation steps')
 
 
 class DiagramExampleResponse(BaseModel):
-    """Response model for diagram examples."""
+    """Response from the get-diagram-examples tool."""
 
-    examples: Dict[str, str]
-
-
-class DiagramIconsRequest(BaseModel):
-    """Request model for listing available diagram icons."""
-
-    provider_filter: Optional[str] = Field(
-        None, description='Filter icons by provider name (e.g., "aws", "gcp", "k8s")'
-    )
-    service_filter: Optional[str] = Field(
-        None, description='Filter icons by service name (e.g., "compute", "database", "network")'
+    examples: dict[str, DiagramExample] = Field(
+        ..., description='Map of example name to example details'
     )
 
 
-class DiagramIconsResponse(BaseModel):
-    """Response model for listing available diagram icons."""
+class AwsIcon(BaseModel):
+    """A single AWS architecture icon."""
 
-    providers: Dict[str, Dict[str, List[str]]]
-    filtered: bool = False
-    filter_info: Optional[Dict[str, str]] = None
+    name: str = Field(..., description='Icon filename without extension')
+    label: str = Field(..., description='Human-readable label')
+    path: str = Field(..., description='Absolute path to the SVG file')
+    category: str = Field(..., description='AWS service category')
+
+
+class AwsIconsResponse(BaseModel):
+    """Response from the list-aws-icons tool."""
+
+    categories: dict[str, list[AwsIcon]] = Field(
+        ..., description='Icons organized by AWS category'
+    )
+    total_count: int = Field(..., description='Total number of icons found')
+    filtered: bool = Field(False, description='Whether results are filtered')
+
+
+# --- Validator Models ---
+
+
+class D2ValidationResult(BaseModel):
+    """Result of D2 source validation."""
+
+    valid: bool = Field(..., description='Whether the D2 source is valid')
+    errors: list[str] = Field(default_factory=list, description='Validation error messages')

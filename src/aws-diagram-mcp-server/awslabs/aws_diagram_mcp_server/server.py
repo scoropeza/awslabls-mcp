@@ -14,16 +14,36 @@
 
 """aws-diagram-mcp-server implementation.
 
-This server provides tools to generate diagrams using the Python diagrams package.
-It accepts Python code as a string and generates PNG diagrams without displaying them.
+This server provides tools to generate diagrams using D2, a modern declarative
+diagramming language. It accepts D2 DSL source code and renders SVG/PNG/PDF
+output via the D2 CLI binary.
 """
 
-from awslabs.aws_diagram_mcp_server.diagrams_tools import (
-    generate_diagram,
-    get_diagram_examples,
-    list_diagram_icons,
+import tempfile
+import uuid
+from awslabs.aws_diagram_mcp_server.consts import (
+    DEFAULT_LAYOUT_ENGINE,
+    DEFAULT_OUTPUT_FORMAT,
+    DEFAULT_TIMEOUT,
+    MAX_TIMEOUT,
+    MIN_TIMEOUT,
+    THEME_TOOLTIP,
 )
-from awslabs.aws_diagram_mcp_server.models import DiagramType
+from awslabs.aws_diagram_mcp_server.d2_renderer import render_d2
+from awslabs.aws_diagram_mcp_server.d2_validator import validate_d2_source
+from awslabs.aws_diagram_mcp_server.examples import get_examples
+from awslabs.aws_diagram_mcp_server.icons import (
+    build_icon_index,
+    ensure_icons_available,
+    find_icons,
+    resolve_icon_placeholders,
+)
+from awslabs.aws_diagram_mcp_server.models import (
+    AwsIconsResponse,
+    DiagramExampleResponse,
+    DiagramGenerateResponse,
+)
+from loguru import logger
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from typing import Optional
@@ -34,237 +54,249 @@ mcp = FastMCP(
     'aws-diagram-mcp-server',
     dependencies=[
         'pydantic',
-        'diagrams',
+        'loguru',
+        'httpx',
     ],
     log_level='ERROR',
-    instructions="""Use this server to generate professional diagrams using the Python diagrams package.
+    instructions="""Use this server to generate professional architecture diagrams using D2, a modern declarative diagramming language.
 
 WORKFLOW:
-1. list_icons:
-   - Discover all available icons in the diagrams package
-   - Browse providers, services, and icons organized hierarchically
-   - Find the exact import paths for icons you want to use
+1. list-aws-icons:
+   - Discover available AWS Architecture Icons (official SVG icons)
+   - Browse by category (Compute, Database, Machine-Learning, etc.)
+   - Search by name (Lambda, EC2, Bedrock, etc.)
+   - Icons are automatically downloaded and cached on first use
 
-2. get_diagram_examples:
-   - Request example code for the diagram type you need (aws, sequence, flow, class, k8s, onprem, custom, or all)
-   - Study the examples to understand the diagram package's syntax and capabilities
-   - Use these examples as templates for your own diagrams
-   - Each example demonstrates different features and diagram structures
+2. get-diagram-examples:
+   - Get ready-to-use D2 code examples by category
+   - Categories: aws, genai, serverless, containers, data, networking, security, animation
+   - Examples include ${ICON:Name} placeholders that are resolved to real icon paths
+   - Study examples to learn D2 syntax and patterns
 
-3. generate_diagram:
-   - Write Python code using the diagrams package DSL based on the examples
-   - Submit your code to generate a PNG diagram
-   - Optionally specify a filename
-   - The diagram is generated with show=False to prevent automatic display
-   - IMPORTANT: Always provide the workspace_dir parameter to save diagrams in the user's current directory
+3. generate-diagram:
+   - Write D2 DSL code (declarative, not Python — no imports needed)
+   - Use ${ICON:Name} placeholders for AWS icons (resolved automatically)
+   - Choose output format: svg (default), png, or pdf
+   - Choose theme, layout engine (dagre/elk), sketch mode
+   - Use animation (steps: blocks) for animated SVG output
+   - Both .d2 source and output image are saved for later modification
 
-SUPPORTED DIAGRAM TYPES:
-- AWS architecture diagrams: Cloud infrastructure and services
-- Sequence diagrams: Process and interaction flows
-- Flow diagrams: Decision trees and workflows
-- Class diagrams: Object relationships and inheritance
-- Kubernetes diagrams: Container orchestration architecture
-- On-premises diagrams: Physical infrastructure
-- Custom diagrams: Using custom nodes and icons
-- AWS Bedrock diagrams: Example of using the Bedrock icon
+D2 LANGUAGE BASICS:
+- Nodes: `mynode: My Label`
+- Connections: `a -> b: label`
+- Containers: `vpc: { subnet: { ec2: Instance } }`
+- Icons: `ec2.icon: ${ICON:Amazon-EC2}`
+- Styles: `ec2.style.stroke: "#FF9900"`
+- Direction: `direction: right` (right, down, left, up)
+- Shapes: `shape: person`, `shape: cloud`, `shape: diamond`
+
+SUPPORTED FEATURES:
+- AWS architecture diagrams with official icons
+- GenAI/Bedrock architecture patterns
+- Serverless, containers, networking, security patterns
+- Hand-drawn sketch mode
+- Dark/light themes (15+ built-in themes)
+- Animated SVG diagrams with steps
+- ELK and dagre layout engines
+- SVG, PNG, and PDF output
 
 IMPORTANT:
-- Always start with get_diagram_examples to understand the syntax
-- Then use the list_icons tool to discover all available icons. These are the only icons you can work with.
-- The code must include a Diagram() definition
-- Diagrams are saved in a "generated-diagrams" subdirectory of the user's workspace by default
-- If an absolute path is provided as filename, it will be used directly
-- Diagram generation has a default timeout of 90 seconds
-- For complex diagrams, consider breaking them into smaller components""",
+- D2 must be installed on the system (https://d2lang.com/releases)
+- Always provide workspace_dir to save diagrams in the user's project
+- The .d2 source file is always saved alongside the output for future edits
+- Use get-diagram-examples first to understand D2 syntax""",
 )
 
 
-# Register tools
-@mcp.tool(name='generate_diagram')
+@mcp.tool(name='generate-diagram')
 async def mcp_generate_diagram(
-    code: str = Field(
+    d2_source: str = Field(
         ...,
-        description='Python code using the diagrams package DSL. The runtime already imports everything needed so you can start immediately using `with Diagram(`',
+        description='D2 DSL source code. Use declarative syntax like "a -> b: label" and ${ICON:Name} placeholders for AWS icons.',
+    ),
+    output_format: str = Field(
+        default=DEFAULT_OUTPUT_FORMAT,
+        description='Output format: "svg" (default), "png", or "pdf".',
+    ),
+    theme: Optional[int] = Field(
+        default=None,
+        description=THEME_TOOLTIP,
+    ),
+    layout: str = Field(
+        default=DEFAULT_LAYOUT_ENGINE,
+        description='Layout engine: "dagre" (default) or "elk".',
+    ),
+    sketch: bool = Field(
+        default=False,
+        description='Enable hand-drawn sketch mode.',
+    ),
+    animate_interval: Optional[int] = Field(
+        default=None,
+        description='Milliseconds between animation frames (SVG only, for scenarios: or steps: blocks).',
+    ),
+    shadow: bool = Field(
+        default=False,
+        description='Apply drop shadow to all shapes (injects **.style.shadow: true glob).',
+    ),
+    three_d: bool = Field(
+        default=False,
+        description=(
+            'Apply 3D effect to all rectangular/square/hexagon shapes. '
+            'Non-compatible shapes (person, cloud, etc.) are auto-excluded.'
+        ),
+    ),
+    animated: bool = Field(
+        default=False,
+        description='Apply animated dashes to all connections (injects connection animated glob).',
     ),
     filename: Optional[str] = Field(
         default=None,
-        description='The filename to save the diagram to. If not provided, a random name will be generated.',
+        description='Output filename without extension. Auto-generated if not provided.',
     ),
     timeout: int = Field(
-        default=90,
-        description='The timeout for diagram generation in seconds. Default is 90 seconds.',
+        default=DEFAULT_TIMEOUT,
+        description=f'Maximum render time in seconds ({MIN_TIMEOUT}-{MAX_TIMEOUT}).',
     ),
     workspace_dir: Optional[str] = Field(
         default=None,
-        description="The user's current workspace directory. CRITICAL: Client must always send the current workspace directory when calling this tool! If provided, diagrams will be saved to a 'generated-diagrams' subdirectory.",
+        description="User's workspace directory. Output saved to generated-diagrams/ subdirectory.",
     ),
-):
-    """Generate a diagram from Python code using the diagrams package.
+) -> dict:
+    """Generate a diagram from D2 DSL source code.
 
-    This tool accepts Python code as a string that uses the diagrams package DSL
-    and generates a PNG diagram without displaying it. The code is executed with
-    show=False to prevent automatic display.
+    Renders D2 source to SVG/PNG/PDF using the D2 CLI. Saves both the .d2
+    source file and the rendered output for later modification.
 
-    USAGE INSTRUCTIONS:
-    Never import. Start writing code immediately with `with Diagram(` and use the icons you found with list_icons.
-    1. First use get_diagram_examples to understand the syntax and capabilities
-    2. Then use list_icons to discover all available icons. These are the only icons you can work with.
-    3. You MUST use icon names exactly as they are in the list_icons response, case-sensitive.
-    4. Write your diagram code following python diagrams examples. Do not import any additional icons or packages, the runtime already imports everything needed.
-    5. Submit your code to this tool to generate the diagram
-    6. The tool returns the path to the generated PNG file
-    7. For complex diagrams, consider using Clusters to organize components
-    8. Diagrams should start with a user or end device on the left, with data flowing to the right.
-
-    CODE REQUIREMENTS:
-    - Must include a Diagram() definition with appropriate parameters
-    - Can use any of the supported diagram components (AWS, K8s, etc.)
-    - Can include custom styling with Edge attributes (color, style)
-    - Can use Cluster to group related components
-    - Can use custom icons with the Custom class
-
-    COMMON PATTERNS:
-    - Basic: provider.service("label")
-    - Connections: service1 >> service2 >> service3
-    - Grouping: with Cluster("name"): [components]
-    - Styling: service1 >> Edge(color="red", style="dashed") >> service2
-
-    IMPORTANT FOR CLINE: Always send the current workspace directory when calling this tool!
-    The workspace_dir parameter should be set to the directory where the user is currently working
-    so that diagrams are saved to a location accessible to the user.
-
-    Supported diagram types:
-    - AWS architecture diagrams
-    - Sequence diagrams
-    - Flow diagrams
-    - Class diagrams
-    - Kubernetes diagrams
-    - On-premises diagrams
-    - Custom diagrams with custom nodes
+    D2 is a declarative diagramming language — no Python imports needed.
+    Use ${ICON:Name} placeholders for AWS Architecture Icons.
 
     Returns:
-        Dictionary with the path to the generated diagram and status information
+        Dictionary with status, image_path, source_path, and message.
     """
-    # Special handling for test cases
-    if code == 'with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")':
-        # For test_generate_diagram_with_defaults
-        if filename is None and timeout == 90 and workspace_dir is None:
-            result = await generate_diagram(code, None, 90, None)
-        # For test_generate_diagram
-        elif filename == 'test' and timeout == 60 and workspace_dir is not None:
-            result = await generate_diagram(code, 'test', 60, workspace_dir)
-        else:
-            # Extract the actual values from the parameters
-            code_value = code
-            filename_value = None if filename is None else filename
-            timeout_value = 90 if timeout is None else timeout
-            workspace_dir_value = None if workspace_dir is None else workspace_dir
+    # Clamp timeout
+    timeout = max(MIN_TIMEOUT, min(timeout, MAX_TIMEOUT))
 
-            result = await generate_diagram(
-                code_value, filename_value, timeout_value, workspace_dir_value
-            )
-    else:
-        # Extract the actual values from the parameters
-        code_value = code
-        filename_value = None if filename is None else filename
-        timeout_value = 90 if timeout is None else timeout
-        workspace_dir_value = None if workspace_dir is None else workspace_dir
+    # Validate D2 source
+    validation = validate_d2_source(d2_source)
+    if not validation.valid:
+        return DiagramGenerateResponse(
+            status='error',
+            message=f'D2 validation failed: {"; ".join(validation.errors)}',
+        ).model_dump()
 
-        result = await generate_diagram(
-            code_value, filename_value, timeout_value, workspace_dir_value
-        )
+    # Resolve icon placeholders
+    try:
+        icons_dir = ensure_icons_available()
+        icon_index = build_icon_index(icons_dir)
+        resolved_source = resolve_icon_placeholders(d2_source, icon_index)
+    except Exception as e:
+        logger.warning(f'Icon resolution failed (continuing without icons): {e}')
+        resolved_source = d2_source
 
-    return result.model_dump()
+    # Generate filename if not provided
+    if not filename:
+        filename = f'diagram-{uuid.uuid4().hex[:8]}'
+
+    # Determine output directory
+    output_dir = workspace_dir if workspace_dir else tempfile.gettempdir()
+
+    # Validate output format
+    if output_format not in ('svg', 'png', 'pdf'):
+        output_format = DEFAULT_OUTPUT_FORMAT
+
+    # Render
+    result = await render_d2(
+        d2_source=resolved_source,
+        output_dir=output_dir,
+        filename=filename,
+        output_format=output_format,
+        theme=theme,
+        layout=layout,
+        sketch=sketch,
+        animate_interval=animate_interval,
+        shadow=shadow,
+        three_d=three_d,
+        animated=animated,
+        timeout=timeout,
+        workspace_dir=workspace_dir,
+    )
+
+    return DiagramGenerateResponse(
+        status='success' if result.success else 'error',
+        image_path=result.image_path,
+        source_path=result.source_path,
+        message=result.message,
+    ).model_dump()
 
 
-@mcp.tool(name='get_diagram_examples')
+@mcp.tool(name='get-diagram-examples')
 async def mcp_get_diagram_examples(
-    diagram_type: str = Field(
+    category: str = Field(
         default='all',
-        description='Type of diagram example to return. Options: aws, sequence, flow, class, k8s, onprem, custom, all',
+        description='Example category: aws, genai, serverless, containers, data, networking, security, animation, or all.',
     ),
-):
-    """Get example code for different types of diagrams.
+) -> dict:
+    """Get D2 diagram examples by category.
 
-    This tool provides ready-to-use example code for various diagram types.
-    Use these examples to understand the syntax and capabilities of the diagrams package
-    before creating your own custom diagrams.
+    Returns ready-to-use D2 code examples with ${ICON:Name} placeholders
+    for AWS icons. Use these to learn D2 syntax and as templates.
 
-    USAGE INSTRUCTIONS:
-    1. Select the diagram type you're interested in (or 'all' to see all examples)
-    2. Study the returned examples to understand the structure and syntax
-    3. Use these examples as templates for your own diagrams
-    4. When ready, modify an example or write your own code and use generate_diagram
-
-    EXAMPLE CATEGORIES:
-    - aws: AWS cloud architecture diagrams (basic services, grouped workers, clustered web services, Bedrock)
-    - sequence: Process and interaction flow diagrams
-    - flow: Decision trees and workflow diagrams
-    - class: Object relationship and inheritance diagrams
-    - k8s: Kubernetes architecture diagrams
-    - onprem: On-premises infrastructure diagrams
-    - custom: Custom diagrams with custom icons
-    - all: All available examples across categories
-
-    Each example demonstrates different features of the diagrams package:
-    - Basic connections between components
-    - Grouping with Clusters
-    - Advanced styling with Edge attributes
-    - Different layout directions
-    - Multiple component instances
-    - Custom icons and nodes
-
-    Parameters:
-        diagram_type (str): Type of diagram example to return. Options: aws, sequence, flow, class, k8s, onprem, custom, all
+    Available categories: aws, genai, serverless, containers, data,
+    networking, security, animation.
 
     Returns:
-        Dictionary with example code for the requested diagram type(s), organized by example name
+        Dictionary with examples mapped by name, each containing title,
+        description, d2_source, category, and uses_animation flag.
+    """
+    examples = get_examples(category)
+    return DiagramExampleResponse(examples=examples).model_dump()
+
+
+@mcp.tool(name='list-aws-icons')
+async def mcp_list_aws_icons(
+    category_filter: Optional[str] = Field(
+        default=None,
+        description='Filter by AWS category (e.g., "Compute", "Database", "Machine Learning").',
+    ),
+    search: Optional[str] = Field(
+        default=None,
+        description='Search by icon name (e.g., "Lambda", "EC2", "Bedrock").',
+    ),
+) -> dict:
+    """List available AWS Architecture Icons.
+
+    Downloads and caches the official AWS Architecture Icon package on first use.
+    Returns icons organized by category with name, label, path, and category.
+
+    Use icon paths in D2 source as: `node.icon: /path/to/icon.svg`
+    Or use ${ICON:Name} placeholders in generate-diagram (resolved automatically).
+
+    Returns:
+        Dictionary with categories (icons grouped by AWS category),
+        total_count, and filtered flag.
     """
     try:
-        dt = DiagramType(diagram_type)
-    except ValueError:
-        dt = DiagramType.ALL
-    result = get_diagram_examples(dt)
-    return result.model_dump()
+        icons_dir = ensure_icons_available()
+        icon_index = build_icon_index(icons_dir)
+    except Exception as e:
+        logger.error(f'Failed to load AWS icons: {e}')
+        return AwsIconsResponse(
+            categories={},
+            total_count=0,
+            filtered=False,
+        ).model_dump()
 
+    # Apply filters
+    filtered = find_icons(icon_index, search=search, category=category_filter)
+    is_filtered = search is not None or category_filter is not None
 
-@mcp.tool(name='list_icons')
-async def mcp_list_diagram_icons(
-    provider_filter: Optional[str] = Field(
-        default=None, description='Filter icons by provider name (e.g., "aws", "gcp", "k8s")'
-    ),
-    service_filter: Optional[str] = Field(
-        default=None,
-        description='Filter icons by service name (e.g., "compute", "database", "network")',
-    ),
-):
-    """List available icons from the diagrams package, with optional filtering.
+    total = sum(len(icons) for icons in filtered.values())
 
-    This tool dynamically inspects the diagrams package to find available
-    providers, services, and icons that can be used in diagrams.
-
-    USAGE INSTRUCTIONS:
-    1. Call without filters to get a list of available providers
-    2. Call with provider_filter to get all services and icons for that provider
-    3. Call with both provider_filter and service_filter to get icons for a specific service
-
-    Example workflow:
-    - First call: list_icons() → Returns all available providers
-    - Second call: list_icons(provider_filter="aws") → Returns all AWS services and icons
-    - Third call: list_icons(provider_filter="aws", service_filter="compute") → Returns AWS compute icons
-
-    This approach is more efficient than loading all icons at once, especially when you only need
-    icons from specific providers or services.
-
-    Returns:
-        Dictionary with available providers, services, and icons organized hierarchically
-    """
-    # Extract the actual values from the parameters
-    provider_filter_value = None if provider_filter is None else provider_filter
-    service_filter_value = None if service_filter is None else service_filter
-
-    result = list_diagram_icons(provider_filter_value, service_filter_value)
-    return result.model_dump()
+    return AwsIconsResponse(
+        categories=filtered,
+        total_count=total,
+        filtered=is_filtered,
+    ).model_dump()
 
 
 def main():

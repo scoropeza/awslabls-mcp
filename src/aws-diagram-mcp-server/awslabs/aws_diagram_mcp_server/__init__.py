@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Diagrams MCP Server package.
+"""AWS Diagram MCP Server package.
 
-This package provides an MCP server that creates diagrams using the Python diagrams package DSL.
+This package provides an MCP server that creates diagrams using D2, a modern
+declarative diagramming language with built-in AWS icon support.
 """
 
-__version__ = '1.0.19'
+__version__ = '2.0.0'

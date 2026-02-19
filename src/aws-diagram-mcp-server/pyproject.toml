@@ -1,17 +1,13 @@
 [project]
 name = "awslabs.aws-diagram-mcp-server"
-version = "1.0.19"
-description = "An MCP server that seamlessly creates diagrams using the Python diagrams package DSL"
+version = "2.0.0"
+description = "An MCP server that generates architecture diagrams using D2, a modern declarative diagramming language with AWS icon support"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "bandit>=1.8.6",
-    "boto3>=1.40.53",
-    "diagrams>=0.24.4",
+    "loguru>=0.7.0",
     "mcp[cli]>=1.23.0",
     "pydantic>=2.12.2",
-    "sarif-om>=1.0.4",
-    "setuptools>=80.9.0",
     "starlette>=0.48.0",
     "urllib3>=2.6.3",
 ]
@@ -111,6 +107,9 @@ reportMissingImports = false
 reportUnusedExpression = false
 reportArgumentType = false
 reportAttributeAccessIssue = false
+reportCallIssue = false
+reportOperatorIssue = false
+reportOptionalMemberAccess = false
 reportPrivateUsage = false
 reportUnknownMemberType = false
 reportUnknownVariableType = false
@@ -130,27 +129,11 @@ update_changelog_on_bump = true
 [tool.hatch.build.targets.wheel]
 packages = ["awslabs"]
 
-[tool.bandit]
-# Skip specific issues
-skips = ["B102"]
-exclude_dirs = ["venv", "tests"]
-
-# Per-file skips
-per_file_skips = { "awslabs/aws_diagram_mcp_server/diagrams.py" = ["B102"] }
-
 [tool.pytest.ini_options]
 testpaths = "tests"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = ["asyncio: mark a test as an asyncio coroutine"]
-filterwarnings = [
-    "ignore::DeprecationWarning:ast",
-    "ignore:ast.Str is deprecated:DeprecationWarning",
-    "ignore:ast.Num is deprecated:DeprecationWarning",
-    "ignore:ast.NameConstant is deprecated:DeprecationWarning",
-    "ignore:ast.Ellipsis is deprecated:DeprecationWarning",
-    "ignore:Attribute s is deprecated:DeprecationWarning",
-]
 
 [tool.coverage.run]
 source = ["awslabs"]

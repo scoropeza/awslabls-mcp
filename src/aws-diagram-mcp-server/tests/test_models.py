@@ -1,4 +1,3 @@
-#
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,179 +11,216 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
-"""Tests for the models module of the diagrams-mcp-server."""
+"""Tests for D2-based Pydantic models."""
 
-import os
 import pytest
-import tempfile
 from awslabs.aws_diagram_mcp_server.models import (
+    AwsIcon,
+    AwsIconsResponse,
+    D2RenderResult,
+    D2ValidationResult,
+    D2VersionInfo,
+    DiagramExample,
     DiagramExampleResponse,
-    DiagramGenerateRequest,
     DiagramGenerateResponse,
-    DiagramIconsResponse,
-    DiagramType,
 )
-from pydantic import ValidationError
 
 
-class TestDiagramType:
-    """Tests for the DiagramType enum."""
+class TestD2VersionInfo:
+    """Tests for D2VersionInfo model."""
 
-    def test_diagram_type_values(self):
-        """Test that DiagramType enum has the expected values."""
-        assert DiagramType.AWS == 'aws'
-        assert DiagramType.SEQUENCE == 'sequence'
-        assert DiagramType.FLOW == 'flow'
-        assert DiagramType.CLASS == 'class'
-        assert DiagramType.K8S == 'k8s'
-        assert DiagramType.ONPREM == 'onprem'
-        assert DiagramType.CUSTOM == 'custom'
-        assert DiagramType.ALL == 'all'
+    def test_create_version_info(self):
+        """Test creating a version info instance."""
+        info = D2VersionInfo(version='0.6.9', path='/usr/local/bin/d2')
+        assert info.version == '0.6.9'
+        assert info.path == '/usr/local/bin/d2'
 
-    def test_diagram_type_from_string(self):
-        """Test that DiagramType can be created from strings."""
-        assert DiagramType('aws') == DiagramType.AWS
-        assert DiagramType('sequence') == DiagramType.SEQUENCE
-        assert DiagramType('flow') == DiagramType.FLOW
-        assert DiagramType('class') == DiagramType.CLASS
-        assert DiagramType('k8s') == DiagramType.K8S
-        assert DiagramType('onprem') == DiagramType.ONPREM
-        assert DiagramType('custom') == DiagramType.CUSTOM
-        assert DiagramType('all') == DiagramType.ALL
-
-    def test_invalid_diagram_type(self):
-        """Test that invalid diagram types raise an error."""
-        with pytest.raises(ValueError):
-            DiagramType('invalid')
+    def test_version_info_requires_fields(self):
+        """Test that version and path are required."""
+        with pytest.raises(Exception):
+            D2VersionInfo()
 
 
-class TestDiagramGenerateRequest:
-    """Tests for the DiagramGenerateRequest model."""
+class TestD2RenderResult:
+    """Tests for D2RenderResult model."""
 
-    def test_valid_request(self):
-        """Test that a valid request is accepted."""
-        request = DiagramGenerateRequest(
-            code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-            filename='test',
-            timeout=60,
-            workspace_dir=tempfile.gettempdir(),
+    def test_success_result(self):
+        """Test creating a successful render result."""
+        result = D2RenderResult(
+            success=True,
+            image_path='/tmp/out.svg',
+            source_path='/tmp/out.d2',
+            message='Rendered successfully',
         )
-        assert request.code == 'with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")'
-        assert request.filename == 'test'
-        assert request.timeout == 60
-        assert request.workspace_dir == tempfile.gettempdir()
+        assert result.success is True
+        assert result.image_path == '/tmp/out.svg'
+        assert result.source_path == '/tmp/out.d2'
+        assert result.stderr is None
 
-    def test_minimal_request(self):
-        """Test that a minimal request with only required fields is accepted."""
-        request = DiagramGenerateRequest(
-            code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-            filename=None,
-            timeout=90,
-            workspace_dir=None,
+    def test_error_result(self):
+        """Test creating an error render result."""
+        result = D2RenderResult(
+            success=False,
+            stderr='syntax error at line 5',
+            message='D2 rendering failed',
         )
-        assert request.code == 'with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")'
-        assert request.filename is None
-        assert request.timeout == 90  # Default value
-        assert request.workspace_dir is None
+        assert result.success is False
+        assert result.image_path is None
+        assert result.source_path is None
+        assert result.stderr == 'syntax error at line 5'
 
-    def test_invalid_code(self):
-        """Test that code without a Diagram definition is rejected."""
-        with pytest.raises(ValidationError):
-            DiagramGenerateRequest(
-                code='print("Hello, world!")',
-                filename=None,
-                timeout=90,
-                workspace_dir=None,
-            )
-
-    def test_invalid_timeout(self):
-        """Test that invalid timeout values are rejected."""
-        with pytest.raises(ValidationError):
-            DiagramGenerateRequest(
-                code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-                filename=None,
-                timeout=0,
-                workspace_dir=None,
-            )
-        with pytest.raises(ValidationError):
-            DiagramGenerateRequest(
-                code='with Diagram("Test", show=False):\n    ELB("lb") >> EC2("web")',
-                filename=None,
-                timeout=301,  # Greater than the maximum allowed (300)
-                workspace_dir=None,
-            )
+    def test_result_with_stderr_warnings(self):
+        """Test result with warnings in stderr."""
+        result = D2RenderResult(
+            success=True,
+            image_path='/tmp/out.svg',
+            source_path='/tmp/out.d2',
+            stderr='warning: unused node',
+            message='Rendered with warnings',
+        )
+        assert result.success is True
+        assert result.stderr == 'warning: unused node'
 
 
 class TestDiagramGenerateResponse:
-    """Tests for the DiagramGenerateResponse model."""
+    """Tests for DiagramGenerateResponse model."""
 
     def test_success_response(self):
-        """Test that a success response is created correctly."""
-        response = DiagramGenerateResponse(
+        """Test successful response."""
+        resp = DiagramGenerateResponse(
             status='success',
-            path=os.path.join(tempfile.gettempdir(), 'diagram.png'),
-            message='Diagram generated successfully',
+            image_path='/tmp/diagram.svg',
+            source_path='/tmp/diagram.d2',
+            message='Diagram generated',
         )
-        assert response.status == 'success'
-        assert response.path == os.path.join(tempfile.gettempdir(), 'diagram.png')
-        assert response.message == 'Diagram generated successfully'
+        assert resp.status == 'success'
+        assert resp.image_path == '/tmp/diagram.svg'
+        assert resp.source_path == '/tmp/diagram.d2'
 
     def test_error_response(self):
-        """Test that an error response is created correctly."""
-        response = DiagramGenerateResponse(
+        """Test error response."""
+        resp = DiagramGenerateResponse(
             status='error',
-            message='Error generating diagram',
+            message='D2 not installed',
         )
-        assert response.status == 'error'
-        assert response.path is None
-        assert response.message == 'Error generating diagram'
+        assert resp.status == 'error'
+        assert resp.image_path is None
+        assert resp.source_path is None
+
+    def test_status_literal_values(self):
+        """Test that status only accepts 'success' or 'error'."""
+        with pytest.raises(Exception):
+            DiagramGenerateResponse(status='unknown', message='test')
+
+
+class TestDiagramExample:
+    """Tests for DiagramExample model."""
+
+    def test_basic_example(self):
+        """Test creating a basic example."""
+        ex = DiagramExample(
+            title='Three-Tier Web',
+            description='Classic three-tier architecture',
+            d2_source='elb -> ec2 -> rds',
+            category='aws',
+        )
+        assert ex.title == 'Three-Tier Web'
+        assert ex.uses_animation is False
+
+    def test_animation_example(self):
+        """Test creating an example with animation."""
+        ex = DiagramExample(
+            title='Request Flow',
+            description='Animated request flow',
+            d2_source='steps: { step1: { a -> b } }',
+            category='animation',
+            uses_animation=True,
+        )
+        assert ex.uses_animation is True
 
 
 class TestDiagramExampleResponse:
-    """Tests for the DiagramExampleResponse model."""
+    """Tests for DiagramExampleResponse model."""
 
     def test_example_response(self):
-        """Test that an example response is created correctly."""
-        response = DiagramExampleResponse(
-            examples={
-                'aws': 'with Diagram("AWS", show=False):\n    ELB("lb") >> EC2("web")',
-                'sequence': 'with Diagram("Sequence", show=False):\n    User("user") >> Action("action")',
-            }
+        """Test creating example response with multiple examples."""
+        examples = {
+            'three_tier': DiagramExample(
+                title='Three-Tier',
+                description='Three-tier web',
+                d2_source='a -> b -> c',
+                category='aws',
+            ),
+        }
+        resp = DiagramExampleResponse(examples=examples)
+        assert 'three_tier' in resp.examples
+        assert resp.examples['three_tier'].category == 'aws'
+
+
+class TestAwsIcon:
+    """Tests for AwsIcon model."""
+
+    def test_create_icon(self):
+        """Test creating an icon instance."""
+        icon = AwsIcon(
+            name='Arch_Amazon-EC2_64',
+            label='Amazon EC2',
+            path='/cache/icons/Compute/64/Arch_Amazon-EC2_64.svg',
+            category='Compute',
         )
-        assert len(response.examples) == 2
-        assert 'aws' in response.examples
-        assert 'sequence' in response.examples
-        assert response.examples['aws'].startswith('with Diagram("AWS", show=False):')
-        assert response.examples['sequence'].startswith('with Diagram("Sequence", show=False):')
+        assert icon.name == 'Arch_Amazon-EC2_64'
+        assert icon.label == 'Amazon EC2'
+        assert icon.category == 'Compute'
 
 
-class TestDiagramIconsResponse:
-    """Tests for the DiagramIconsResponse model."""
+class TestAwsIconsResponse:
+    """Tests for AwsIconsResponse model."""
 
     def test_icons_response(self):
-        """Test that an icons response is created correctly."""
-        response = DiagramIconsResponse(
-            providers={
-                'aws': {
-                    'compute': ['EC2', 'Lambda'],
-                    'database': ['RDS', 'DynamoDB'],
-                },
-                'gcp': {
-                    'compute': ['GCE', 'GKE'],
-                },
-            }
+        """Test creating icons response."""
+        resp = AwsIconsResponse(
+            categories={
+                'Compute': [
+                    AwsIcon(
+                        name='Arch_Amazon-EC2_64',
+                        label='Amazon EC2',
+                        path='/cache/icons/Compute/64/Arch_Amazon-EC2_64.svg',
+                        category='Compute',
+                    ),
+                ],
+            },
+            total_count=1,
+            filtered=False,
         )
-        assert len(response.providers) == 2
-        assert 'aws' in response.providers
-        assert 'gcp' in response.providers
-        assert 'compute' in response.providers['aws']
-        assert 'database' in response.providers['aws']
-        assert 'compute' in response.providers['gcp']
-        assert 'EC2' in response.providers['aws']['compute']
-        assert 'Lambda' in response.providers['aws']['compute']
-        assert 'RDS' in response.providers['aws']['database']
-        assert 'DynamoDB' in response.providers['aws']['database']
-        assert 'GCE' in response.providers['gcp']['compute']
-        assert 'GKE' in response.providers['gcp']['compute']
+        assert resp.total_count == 1
+        assert len(resp.categories['Compute']) == 1
+
+    def test_filtered_response(self):
+        """Test filtered icons response."""
+        resp = AwsIconsResponse(
+            categories={},
+            total_count=0,
+            filtered=True,
+        )
+        assert resp.filtered is True
+        assert resp.total_count == 0
+
+
+class TestD2ValidationResult:
+    """Tests for D2ValidationResult model."""
+
+    def test_valid_result(self):
+        """Test valid validation result."""
+        result = D2ValidationResult(valid=True)
+        assert result.valid is True
+        assert result.errors == []
+
+    def test_invalid_result_with_errors(self):
+        """Test invalid result with error messages."""
+        result = D2ValidationResult(
+            valid=False,
+            errors=['D2 source is empty', 'Missing declarations'],
+        )
+        assert result.valid is False
+        assert len(result.errors) == 2

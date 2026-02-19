@@ -12,144 +12,105 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test fixtures for the diagrams-mcp-server tests."""
+"""Shared test fixtures for aws-diagram-mcp-server tests."""
 
+import os
 import pytest
 import tempfile
-import warnings
-from awslabs.aws_diagram_mcp_server.models import DiagramType
-from typing import Dict, Generator
-
-
-# Suppress AST deprecation warnings from bandit and other libraries
-warnings.filterwarnings('ignore', category=DeprecationWarning, message=r'.*ast\.Bytes.*')
-warnings.filterwarnings(
-    'ignore', category=DeprecationWarning, message='.*Attribute n is deprecated.*'
-)
-
-
-@pytest.fixture(autouse=True)
-def suppress_deprecation_warnings():
-    """Suppress deprecation warnings for all tests."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', category=DeprecationWarning, message=r'.*ast\.Bytes.*')
-        warnings.filterwarnings(
-            'ignore', category=DeprecationWarning, message='.*Attribute n is deprecated.*'
-        )
-        yield
+from awslabs.aws_diagram_mcp_server.models import AwsIcon
+from unittest.mock import AsyncMock, patch
 
 
 @pytest.fixture
-def temp_workspace_dir() -> Generator[str, None, None]:
-    """Create a temporary directory for diagram output."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        yield temp_dir
+def temp_workspace_dir():
+    """Create a temporary workspace directory for test outputs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield tmpdir
 
 
 @pytest.fixture
-def aws_diagram_code() -> str:
-    """Return example AWS diagram code for testing."""
-    return """with Diagram("Test AWS Diagram", show=False):
-    ELB("lb") >> EC2("web") >> RDS("userdb")
+def sample_d2_source():
+    """Simple valid D2 source for testing."""
+    return 'a: Service A\nb: Service B\na -> b: request'
+
+
+@pytest.fixture
+def sample_d2_with_icons():
+    """D2 source with icon placeholders."""
+    return """ec2: EC2 Instance {
+  icon: ${ICON:Amazon-EC2}
+}
+rds: RDS Database {
+  icon: ${ICON:Amazon-RDS}
+}
+ec2 -> rds: query
 """
 
 
 @pytest.fixture
-def sequence_diagram_code() -> str:
-    """Return example sequence diagram code for testing."""
-    return """with Diagram("Test Sequence Diagram", show=False):
-    user = User("User")
-    login = InputOutput("Login Form")
-    auth = Decision("Authenticated?")
-    success = Action("Access Granted")
-    failure = Action("Access Denied")
-
-    user >> login >> auth
-    auth >> success
-    auth >> failure
-"""
-
-
-@pytest.fixture
-def flow_diagram_code() -> str:
-    """Return example flow diagram code for testing."""
-    return """with Diagram("Test Flow Diagram", show=False):
-    start = StartEnd("Start")
-    order = InputOutput("Order Received")
-    check = Decision("In Stock?")
-    process = Action("Process Order")
-    wait = Delay("Backorder")
-    ship = Action("Ship Order")
-    end = StartEnd("End")
-
-    start >> order >> check
-    check >> process >> ship >> end
-    check >> wait >> process
-"""
-
-
-@pytest.fixture
-def invalid_diagram_code() -> str:
-    """Return invalid diagram code for testing."""
-    return """with Diagram("Invalid Diagram", show=False):
-    # This is missing the diagram components
-    # Should cause an error
-"""
-
-
-@pytest.fixture
-def dangerous_diagram_code() -> str:
-    """Return diagram code with dangerous functions for testing."""
-    return """with Diagram("Dangerous Diagram", show=False):
-    ELB("lb") >> EC2("web")
-
-    # This contains a dangerous function
-    exec("print('This is dangerous')")
-"""
-
-
-@pytest.fixture
-def example_diagrams() -> Dict[str, str]:
-    """Return a dictionary of example diagrams for different types."""
+def sample_icon_index():
+    """Sample icon index for testing."""
     return {
-        DiagramType.AWS: """with Diagram("AWS Example", show=False):
-    ELB("lb") >> EC2("web") >> RDS("userdb")
-""",
-        DiagramType.SEQUENCE: """with Diagram("Sequence Example", show=False):
-    user = User("User")
-    login = InputOutput("Login Form")
-    auth = Decision("Authenticated?")
-    user >> login >> auth
-""",
-        DiagramType.FLOW: """with Diagram("Flow Example", show=False):
-    start = StartEnd("Start")
-    process = Action("Process")
-    end = StartEnd("End")
-    start >> process >> end
-""",
-        DiagramType.CLASS: """with Diagram("Class Example", show=False):
-    base = Python("BaseClass")
-    child = Python("ChildClass")
-    base >> child
-""",
-        DiagramType.K8S: """with Diagram("K8s Example", show=False):
-    pod = Pod("pod")
-    svc = Service("svc")
-    svc >> pod
-""",
-        DiagramType.ONPREM: """with Diagram("OnPrem Example", show=False):
-    server = Server("server")
-    db = PostgreSQL("db")
-    server >> db
-""",
-        DiagramType.CUSTOM: """# Define a custom icon
-rabbitmq_url = "https://jpadilla.github.io/rabbitmqapp/assets/img/icon.png"
-rabbitmq_icon = "rabbitmq.png"
-urlretrieve(rabbitmq_url, rabbitmq_icon)
-
-with Diagram("Custom Example", show=False):
-    queue = Custom("Message queue", rabbitmq_icon)
-    db = PostgreSQL("db")
-    queue >> db
-""",
+        'Compute': [
+            AwsIcon(
+                name='Arch_Amazon-EC2_64',
+                label='Amazon EC2',
+                path='/icons/Arch_Amazon-EC2_64.svg',
+                category='Compute',
+            ),
+            AwsIcon(
+                name='Arch_AWS-Lambda_64',
+                label='AWS Lambda',
+                path='/icons/Arch_AWS-Lambda_64.svg',
+                category='Compute',
+            ),
+        ],
+        'Database': [
+            AwsIcon(
+                name='Arch_Amazon-RDS_64',
+                label='Amazon RDS',
+                path='/icons/Arch_Amazon-RDS_64.svg',
+                category='Database',
+            ),
+        ],
     }
+
+
+@pytest.fixture
+def mock_d2_success():
+    """Mock a successful D2 CLI execution."""
+    mock_proc = AsyncMock()
+    mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+    mock_proc.returncode = 0
+
+    with (
+        patch(
+            'awslabs.aws_diagram_mcp_server.d2_renderer.shutil.which',
+            return_value='/usr/local/bin/d2',
+        ),
+        patch(
+            'awslabs.aws_diagram_mcp_server.d2_renderer.asyncio.create_subprocess_exec',
+            return_value=mock_proc,
+        ),
+    ):
+        yield mock_proc
+
+
+@pytest.fixture
+def mock_icons_available(sample_icon_index, tmp_path):
+    """Mock icon availability for server-level tests."""
+    # Create a mock icons directory with manifest
+    icons_dir = str(tmp_path / 'icons')
+    os.makedirs(icons_dir, exist_ok=True)
+
+    with (
+        patch(
+            'awslabs.aws_diagram_mcp_server.server.ensure_icons_available',
+            return_value=icons_dir,
+        ),
+        patch(
+            'awslabs.aws_diagram_mcp_server.server.build_icon_index',
+            return_value=sample_icon_index,
+        ),
+    ):
+        yield sample_icon_index
