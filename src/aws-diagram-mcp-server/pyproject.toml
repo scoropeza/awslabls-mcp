@@ -128,6 +128,7 @@ update_changelog_on_bump = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["awslabs"]
+artifacts = ["awslabs/aws_diagram_mcp_server/fonts/*.ttf"]
 
 [tool.pytest.ini_options]
 testpaths = "tests"

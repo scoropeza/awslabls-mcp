@@ -45,6 +45,7 @@ _GEN_DEFAULTS = {
     'shadow': False,
     'three_d': False,
     'animated': False,
+    'font_family': None,
     'filename': None,
     'timeout': DEFAULT_TIMEOUT,
     'workspace_dir': None,
@@ -261,6 +262,28 @@ class TestGenerateDiagram:
             assert result['status'] == 'success'
             call_kwargs = mock_render.call_args[1]
             assert call_kwargs['animated'] is True
+
+    @pytest.mark.asyncio
+    async def test_generate_diagram_with_font_family(self, mock_icons_available):
+        """Test generating with font_family parameter."""
+        render_result = D2RenderResult(
+            success=True,
+            image_path='/tmp/test.svg',
+            source_path='/tmp/test.d2',
+            message='Rendered successfully',
+        )
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.server.render_d2',
+            return_value=render_result,
+        ) as mock_render:
+            result = await mcp_generate_diagram(
+                d2_source='a -> b',
+                **{**_GEN_DEFAULTS, 'font_family': 'amazon-ember'},
+            )
+            assert result['status'] == 'success'
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs['font_family'] == 'amazon-ember'
 
     @pytest.mark.asyncio
     async def test_generate_diagram_timeout_clamping(self, mock_icons_available):

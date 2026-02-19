@@ -15,6 +15,7 @@
 """Constants for the aws-diagram-mcp-server."""
 
 import os
+import sys
 
 
 # AWS Architecture Icons download URL
@@ -137,3 +138,65 @@ MIN_TIMEOUT = 1
 
 # Output subdirectory name
 OUTPUT_SUBDIRECTORY = 'generated-diagrams'
+
+# --- Font support ---
+
+# Font family registry: name -> {variant: [candidate TTF filenames]}
+# Each variant lists filenames in priority order (first found wins).
+FONT_FAMILIES: dict[str, dict[str, list[str]]] = {
+    'amazon-ember': {
+        'regular': ['AmazonEmber_Rg.ttf', 'AmazonEmber-Regular.ttf'],
+        'bold': ['AmazonEmber_Bd.ttf', 'AmazonEmber-Bold.ttf'],
+        'italic': ['AmazonEmber_RgIt.ttf', 'AmazonEmber-RegularItalic.ttf'],
+        'semibold': ['Amazon-Ember-Medium.ttf', 'AmazonEmber-Medium.ttf'],
+    },
+    'exo-2': {
+        'regular': ['Exo2-Regular.ttf'],
+        'italic': ['Exo2-Italic.ttf'],
+    },
+    'bitcount': {
+        'regular': ['BitcountSingle-Regular.ttf'],
+    },
+    'caveat': {
+        'regular': ['Caveat-Regular.ttf'],
+    },
+}
+
+# Directory containing bundled font TTFs (shipped with the package)
+BUNDLED_FONTS_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
+
+
+def get_font_search_dirs() -> list[str]:
+    """Return platform-appropriate font search directories.
+
+    Checks common system font directories for Windows, macOS, and Linux.
+    Only returns directories that actually exist on the current system.
+
+    Returns:
+        List of existing font directory paths.
+    """
+    dirs: list[str] = []
+    if sys.platform == 'win32':
+        windir = os.environ.get('WINDIR', r'C:\Windows')
+        dirs.append(os.path.join(windir, 'Fonts'))
+        localappdata = os.environ.get('LOCALAPPDATA', '')
+        if localappdata:
+            dirs.append(os.path.join(localappdata, 'Microsoft', 'Windows', 'Fonts'))
+    elif sys.platform == 'darwin':
+        dirs.extend(
+            [
+                '/Library/Fonts',
+                os.path.expanduser('~/Library/Fonts'),
+                '/System/Library/Fonts',
+                '/System/Library/Fonts/Supplemental',
+            ]
+        )
+    # Linux (also checked on macOS/Windows as fallback for custom font installs)
+    dirs.extend(
+        [
+            '/usr/share/fonts',
+            '/usr/local/share/fonts',
+            os.path.expanduser('~/.local/share/fonts'),
+        ]
+    )
+    return [d for d in dirs if os.path.isdir(d)]

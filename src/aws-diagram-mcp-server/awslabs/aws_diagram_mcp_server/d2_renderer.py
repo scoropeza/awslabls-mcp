@@ -24,10 +24,13 @@ import os
 import re
 import shutil
 from awslabs.aws_diagram_mcp_server.consts import (
+    BUNDLED_FONTS_DIR,
     DEFAULT_LAYOUT_ENGINE,
     DEFAULT_OUTPUT_FORMAT,
     DEFAULT_TIMEOUT,
+    FONT_FAMILIES,
     OUTPUT_SUBDIRECTORY,
+    get_font_search_dirs,
 )
 from awslabs.aws_diagram_mcp_server.models import D2RenderResult, D2VersionInfo
 from loguru import logger
@@ -189,6 +192,43 @@ def _inject_global_styles(
     return '\n\n'.join(parts)
 
 
+def _resolve_font_family(font_family: str) -> dict[str, str] | None:
+    """Resolve a font family name to TTF file paths on the system.
+
+    Searches platform-appropriate font directories for TTF files matching
+    the requested font family. Returns partial results if only some
+    variants are found (D2 falls back to Source Sans Pro for missing ones).
+
+    Args:
+        font_family: Font family key from FONT_FAMILIES registry.
+
+    Returns:
+        Dict mapping variant names ('regular', 'bold', 'italic', 'semibold')
+        to absolute TTF file paths, or None if the family is unknown or no
+        variant files were found.
+    """
+    family_key = font_family.lower().strip()
+    if family_key not in FONT_FAMILIES:
+        return None
+
+    variants = FONT_FAMILIES[family_key]
+    # Check bundled fonts directory first, then system font directories
+    search_dirs = [BUNDLED_FONTS_DIR] + get_font_search_dirs()
+    resolved: dict[str, str] = {}
+
+    for variant, candidate_filenames in variants.items():
+        for font_dir in search_dirs:
+            for candidate in candidate_filenames:
+                full_path = os.path.join(font_dir, candidate)
+                if os.path.isfile(full_path):
+                    resolved[variant] = full_path
+                    break
+            if variant in resolved:
+                break
+
+    return resolved if resolved else None
+
+
 async def render_d2(
     d2_source: str,
     output_dir: str,
@@ -201,6 +241,7 @@ async def render_d2(
     shadow: bool = False,
     three_d: bool = False,
     animated: bool = False,
+    font_family: str | None = None,
     timeout: int = DEFAULT_TIMEOUT,
     workspace_dir: str | None = None,
 ) -> D2RenderResult:
@@ -221,6 +262,7 @@ async def render_d2(
         shadow: Apply drop shadow to all shapes via glob.
         three_d: Apply 3D effect to rectangular shapes via glob.
         animated: Apply animated dashes to all connections via glob.
+        font_family: Font family name from FONT_FAMILIES registry (auto-detected from system).
         timeout: Maximum render time in seconds.
         workspace_dir: User workspace directory; output goes to generated-diagrams/ subdirectory.
 
@@ -278,6 +320,26 @@ async def render_d2(
 
     if animate_interval is not None and output_format == 'svg':
         args.extend(['--animate-interval', str(animate_interval)])
+
+    # Resolve and inject font flags (skip in sketch mode — D2 uses its own hand-drawn fonts)
+    if font_family and not sketch:
+        font_paths = _resolve_font_family(font_family)
+        if font_paths:
+            # D2 uses separate fonts for regular (container titles), bold (node labels),
+            # italic (connection labels), and semibold. If a variant is missing, fill it
+            # with the regular font so all text uses the custom font instead of falling
+            # back to Source Sans Pro.
+            base_font = font_paths.get('regular', next(iter(font_paths.values())))
+            font_flag_map = {
+                'regular': '--font-regular',
+                'bold': '--font-bold',
+                'italic': '--font-italic',
+                'semibold': '--font-semibold',
+            }
+            for variant, flag in font_flag_map.items():
+                args.extend([flag, font_paths.get(variant, base_font)])
+        else:
+            logger.warning(f'Font family "{font_family}" not found on system, using default')
 
     # Input and output paths
     args.append(source_path)

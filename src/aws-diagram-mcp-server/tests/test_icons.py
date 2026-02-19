@@ -269,11 +269,11 @@ class TestResolveIconPlaceholders:
         assert '/icons/Arch_Amazon-EC2_64.svg' in result
         assert '/icons/Arch_Amazon-RDS_64.svg' in result
 
-    def test_unknown_placeholder_preserved(self, sample_index):
-        """Test that unknown placeholders are preserved."""
+    def test_unknown_placeholder_stripped(self, sample_index):
+        """Test that unknown placeholders are removed to prevent D2 compile errors."""
         source = 'x.icon: ${ICON:NonExistent}'
         result = resolve_icon_placeholders(source, sample_index)
-        assert '${ICON:NonExistent}' in result
+        assert '${ICON:NonExistent}' not in result
 
     def test_no_placeholders(self, sample_index):
         """Test source without placeholders is unchanged."""

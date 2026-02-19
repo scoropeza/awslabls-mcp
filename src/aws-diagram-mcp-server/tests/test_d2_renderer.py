@@ -21,6 +21,7 @@ import tempfile
 from awslabs.aws_diagram_mcp_server.d2_renderer import (
     _find_3d_compatible_node_paths,
     _inject_global_styles,
+    _resolve_font_family,
     check_d2_installed,
     render_d2,
 )
@@ -525,3 +526,87 @@ class TestFind3dCompatibleNodePaths:
         paths = _find_3d_compatible_node_paths(source)
         assert 'a' in paths
         assert 'steps' not in paths
+
+
+class TestResolveFontFamily:
+    """Tests for _resolve_font_family font detection."""
+
+    def test_unknown_family_returns_none(self):
+        """Test that unknown font family returns None."""
+        assert _resolve_font_family('nonexistent-font') is None
+
+    def test_known_family_with_mock_files(self, tmp_path):
+        """Test resolution of a known family when TTF files exist."""
+        # Create mock TTF files
+        (tmp_path / 'AmazonEmber_Rg.ttf').touch()
+        (tmp_path / 'AmazonEmber_Bd.ttf').touch()
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.d2_renderer.get_font_search_dirs',
+            return_value=[str(tmp_path)],
+        ):
+            result = _resolve_font_family('amazon-ember')
+            assert result is not None
+            assert 'regular' in result
+            assert 'bold' in result
+            assert result['regular'].endswith('AmazonEmber_Rg.ttf')
+
+    def test_partial_variants_returned(self, tmp_path):
+        """Test that partial font variants are returned (D2 falls back for missing)."""
+        # Exo 2 only has regular + italic (no bold/semibold)
+        (tmp_path / 'Exo2-Regular.ttf').touch()
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.d2_renderer.get_font_search_dirs',
+            return_value=[str(tmp_path)],
+        ):
+            result = _resolve_font_family('exo-2')
+            assert result is not None
+            assert 'regular' in result
+            assert 'bold' not in result
+
+    def test_no_files_found_returns_none(self, tmp_path):
+        """Test that no matching files returns None."""
+        with patch(
+            'awslabs.aws_diagram_mcp_server.d2_renderer.get_font_search_dirs',
+            return_value=[str(tmp_path)],
+        ):
+            result = _resolve_font_family('amazon-ember')
+            assert result is None
+
+    def test_case_insensitive_family_name(self, tmp_path):
+        """Test that family name lookup is case-insensitive."""
+        (tmp_path / 'Caveat-Regular.ttf').touch()
+
+        with patch(
+            'awslabs.aws_diagram_mcp_server.d2_renderer.get_font_search_dirs',
+            return_value=[str(tmp_path)],
+        ):
+            result = _resolve_font_family('CAVEAT')
+            assert result is not None
+            assert 'regular' in result
+
+    def test_bundled_fonts_checked_first(self, tmp_path):
+        """Test that bundled fonts dir is checked before system dirs."""
+        bundled = tmp_path / 'bundled'
+        bundled.mkdir()
+        (bundled / 'Exo2-Regular.ttf').touch()
+
+        system = tmp_path / 'system'
+        system.mkdir()
+        (system / 'Exo2-Regular.ttf').touch()
+
+        with (
+            patch(
+                'awslabs.aws_diagram_mcp_server.d2_renderer.BUNDLED_FONTS_DIR',
+                str(bundled),
+            ),
+            patch(
+                'awslabs.aws_diagram_mcp_server.d2_renderer.get_font_search_dirs',
+                return_value=[str(system)],
+            ),
+        ):
+            result = _resolve_font_family('exo-2')
+            assert result is not None
+            # Should resolve to bundled dir, not system dir
+            assert str(bundled) in result['regular']

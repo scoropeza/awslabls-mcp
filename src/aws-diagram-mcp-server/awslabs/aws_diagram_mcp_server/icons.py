@@ -265,6 +265,12 @@ def resolve_icon_placeholders(d2_source: str, index: dict[str, list[AwsIcon]]) -
         if path:
             return path
         logger.warning(f'Icon not found for placeholder: ${{ICON:{icon_name}}}')
-        return match.group(0)  # Return original if not found
+        return ''  # Remove placeholder to prevent D2 compile error
 
-    return re.sub(r'\$\{ICON:([^}]+)\}', _replace_placeholder, d2_source)
+    result = re.sub(r'\$\{ICON:([^}]+)\}', _replace_placeholder, d2_source)
+
+    # Remove lines where icon: has no value (placeholder was stripped)
+    # e.g., "    icon: " becomes invalid D2 — remove the entire line
+    result = re.sub(r'^[ \t]*icon:\s*$', '', result, flags=re.MULTILINE)
+
+    return result

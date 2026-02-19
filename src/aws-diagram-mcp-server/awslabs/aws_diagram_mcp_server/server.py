@@ -19,6 +19,7 @@ diagramming language. It accepts D2 DSL source code and renders SVG/PNG/PDF
 output via the D2 CLI binary.
 """
 
+import re
 import tempfile
 import uuid
 from awslabs.aws_diagram_mcp_server.consts import (
@@ -128,7 +129,7 @@ async def mcp_generate_diagram(
     ),
     sketch: bool = Field(
         default=False,
-        description='Enable hand-drawn sketch mode.',
+        description='Enable hand-drawn sketch mode. Overrides font_family (D2 uses its own hand-drawn fonts).',
     ),
     animate_interval: Optional[int] = Field(
         default=None,
@@ -148,6 +149,18 @@ async def mcp_generate_diagram(
     animated: bool = Field(
         default=False,
         description='Apply animated dashes to all connections (injects connection animated glob).',
+    ),
+    font_family: Optional[str] = Field(
+        default=None,
+        description=(
+            'Font family for diagram text. Options: '
+            '"amazon-ember" (Amazon brand, must be installed on system), '
+            '"exo-2" (futuristic/technical geometric — bundled), '
+            '"bitcount" (retro pixel/bitmap style — bundled), '
+            '"caveat" (casual handwriting — bundled). '
+            'None uses D2 default (Source Sans Pro). '
+            'Ignored when sketch=True.'
+        ),
     ),
     filename: Optional[str] = Field(
         default=None,
@@ -191,7 +204,9 @@ async def mcp_generate_diagram(
         resolved_source = resolve_icon_placeholders(d2_source, icon_index)
     except Exception as e:
         logger.warning(f'Icon resolution failed (continuing without icons): {e}')
-        resolved_source = d2_source
+        # Strip all ${ICON:...} placeholders and empty icon: lines
+        resolved_source = re.sub(r'\$\{ICON:[^}]+\}', '', d2_source)
+        resolved_source = re.sub(r'^[ \t]*icon:\s*$', '', resolved_source, flags=re.MULTILINE)
 
     # Generate filename if not provided
     if not filename:
@@ -217,6 +232,7 @@ async def mcp_generate_diagram(
         shadow=shadow,
         three_d=three_d,
         animated=animated,
+        font_family=font_family,
         timeout=timeout,
         workspace_dir=workspace_dir,
     )
