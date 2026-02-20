@@ -447,7 +447,7 @@ class TestInjectGlobalStyles:
     def test_animated_injects_connection_glob(self):
         """Test animated flag injects connection animated glob."""
         result = _inject_global_styles('a -> b', animated=True)
-        assert '(* -> *)[*].style.animated: true' in result
+        assert '(** -> **)[*].style.animated: true' in result
         assert 'a -> b' in result
 
     def test_all_flags_combined(self):
@@ -456,7 +456,7 @@ class TestInjectGlobalStyles:
         result = _inject_global_styles(source, shadow=True, three_d=True, animated=True)
         assert '**.style.shadow: true' in result
         assert 'a.style.3d: true' in result
-        assert '(* -> *)[*].style.animated: true' in result
+        assert '(** -> **)[*].style.animated: true' in result
 
     def test_preamble_separated_by_blank_line(self):
         """Test that glob preamble is separated from source by blank line."""

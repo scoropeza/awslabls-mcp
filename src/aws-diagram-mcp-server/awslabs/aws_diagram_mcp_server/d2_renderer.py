@@ -178,7 +178,7 @@ def _inject_global_styles(
         for path in _find_3d_compatible_node_paths(d2_source):
             epilogue.append(f'{path}.style.3d: true')
     if animated:
-        preamble.append('(* -> *)[*].style.animated: true')
+        preamble.append('(** -> **)[*].style.animated: true')
 
     if not preamble and not epilogue:
         return d2_source

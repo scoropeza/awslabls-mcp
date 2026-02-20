@@ -38,24 +38,24 @@ users: Users {
   shape: person
 }
 
-lb: Elastic Load Balancer {
+lb: Elastic Load Balancing {
   icon: ${ICON:Elastic-Load-Balancing}
 }
 
 web: Web Tier {
-  ec2_1: EC2 Instance 1 {
+  ec2_1: Amazon EC2 {
     icon: ${ICON:Amazon-EC2}
   }
-  ec2_2: EC2 Instance 2 {
+  ec2_2: Amazon EC2 {
     icon: ${ICON:Amazon-EC2}
   }
 }
 
 db: Database Tier {
-  rds_primary: RDS Primary {
+  rds_primary: Amazon RDS Primary {
     icon: ${ICON:Amazon-RDS}
   }
-  rds_replica: RDS Read Replica {
+  rds_replica: Amazon RDS Read Replica {
     icon: ${ICON:Amazon-RDS}
   }
   rds_primary -> rds_replica: replication
@@ -85,7 +85,7 @@ client: Client App {
   shape: person
 }
 
-apigw: API Gateway {
+apigw: Amazon API Gateway {
   icon: ${ICON:Amazon-API-Gateway}
 }
 
@@ -127,15 +127,15 @@ services.payments_fn -> data.orders_db
         d2_source="""direction: right
 
 sources: Event Sources {
-  api: API Gateway {
+  api: Amazon API Gateway {
     icon: ${ICON:Amazon-API-Gateway}
   }
-  s3: S3 Bucket {
+  s3: Amazon S3 {
     icon: ${ICON:Amazon-Simple-Storage-Service}
   }
 }
 
-bus: EventBridge {
+bus: Amazon EventBridge {
   icon: ${ICON:Amazon-EventBridge}
 }
 
@@ -172,7 +172,7 @@ queues.notifications_q -> processors.notifier
         d2_source="""direction: right
 
 ingestion: Data Ingestion {
-  kinesis: Kinesis Data Firehose {
+  kinesis: Amazon Data Firehose {
     icon: ${ICON:Amazon-Kinesis}
   }
 }
@@ -193,7 +193,7 @@ processing: Processing {
   glue: AWS Glue {
     icon: ${ICON:AWS-Glue}
   }
-  catalog: Glue Data Catalog {
+  catalog: AWS Glue Data Catalog {
     icon: ${ICON:AWS-Glue}
   }
 }
@@ -202,7 +202,7 @@ analytics: Analytics {
   athena: Amazon Athena {
     icon: ${ICON:Amazon-Athena}
   }
-  quicksight: QuickSight {
+  quicksight: Amazon QuickSight {
     icon: ${ICON:Amazon-QuickSight}
   }
 }
@@ -241,11 +241,11 @@ bedrock: Amazon Bedrock {
   }
 }
 
-vector_store: OpenSearch Serverless {
+vector_store: Amazon OpenSearch Serverless {
   icon: ${ICON:Amazon-OpenSearch-Service}
 }
 
-docs: Document Store (S3) {
+docs: Amazon S3 {
   icon: ${ICON:Amazon-Simple-Storage-Service}
 }
 
@@ -290,7 +290,7 @@ data: Data Sources {
   orders_db: Orders DB {
     icon: ${ICON:Amazon-DynamoDB}
   }
-  docs: Product Docs (S3) {
+  docs: Amazon S3 {
     icon: ${ICON:Amazon-Simple-Storage-Service}
   }
 }
@@ -330,7 +330,7 @@ models: Foundation Models {
   }
 }
 
-cache: Response Cache {
+cache: Amazon ElastiCache {
   icon: ${ICON:Amazon-ElastiCache}
 }
 
@@ -352,15 +352,15 @@ client: Client {
   shape: person
 }
 
-auth: Cognito {
+auth: Amazon Cognito {
   icon: ${ICON:Amazon-Cognito}
 }
 
-api: API Gateway {
+api: Amazon API Gateway {
   icon: ${ICON:Amazon-API-Gateway}
 }
 
-functions: Lambda Functions {
+functions: AWS Lambda Functions {
   create: Create {
     icon: ${ICON:AWS-Lambda}
   }
@@ -375,11 +375,11 @@ functions: Lambda Functions {
   }
 }
 
-db: DynamoDB {
+db: Amazon DynamoDB {
   icon: ${ICON:Amazon-DynamoDB}
 }
 
-monitoring: CloudWatch {
+monitoring: Amazon CloudWatch {
   icon: ${ICON:Amazon-CloudWatch}
 }
 
@@ -402,19 +402,19 @@ functions.create -> monitoring: logs & metrics
         category='serverless',
         d2_source="""direction: right
 
-api: API Gateway {
+api: Amazon API Gateway {
   icon: ${ICON:Amazon-API-Gateway}
 }
 
-queue: SQS Queue {
+queue: Amazon SQS {
   icon: ${ICON:Amazon-Simple-Queue-Service}
 }
 
-processor: Lambda Processor {
+processor: AWS Lambda {
   icon: ${ICON:AWS-Lambda}
 }
 
-workflow: Step Functions {
+workflow: AWS Step Functions {
   icon: ${ICON:AWS-Step-Functions}
 }
 
@@ -423,7 +423,7 @@ dlq: Dead Letter Queue {
   style.stroke: "#FF0000"
 }
 
-results: Results (S3) {
+results: Amazon S3 {
   icon: ${ICON:Amazon-Simple-Storage-Service}
 }
 
@@ -447,11 +447,11 @@ users: Users {
   shape: person
 }
 
-alb: Application Load Balancer {
+alb: Elastic Load Balancing {
   icon: ${ICON:Elastic-Load-Balancing}
 }
 
-ecs: ECS Cluster {
+ecs: Amazon ECS Cluster {
   service: Fargate Service {
     icon: ${ICON:Amazon-Elastic-Container-Service}
     task1: Task 1
@@ -460,11 +460,11 @@ ecs: ECS Cluster {
   }
 }
 
-ecr: ECR Repository {
+ecr: Amazon ECR {
   icon: ${ICON:Amazon-Elastic-Container-Registry}
 }
 
-rds: Aurora Database {
+rds: Amazon Aurora {
   icon: ${ICON:Amazon-Aurora}
 }
 
@@ -500,7 +500,7 @@ vpc: VPC (10.0.0.0/16) {
       }
     }
     az2_pub: AZ2 Public (10.0.2.0/24) {
-      alb: ALB {
+      alb: Elastic Load Balancing {
         icon: ${ICON:Elastic-Load-Balancing}
       }
     }
@@ -539,7 +539,7 @@ users: Users {
   shape: person
 }
 
-cloudfront: CloudFront {
+cloudfront: Amazon CloudFront {
   icon: ${ICON:Amazon-CloudFront}
 }
 
@@ -547,7 +547,7 @@ waf: AWS WAF {
   icon: ${ICON:AWS-WAF}
 }
 
-alb: Application Load Balancer {
+alb: Elastic Load Balancing {
   icon: ${ICON:Elastic-Load-Balancing}
 }
 
@@ -589,30 +589,30 @@ producers: Data Producers {
   logs: Log Streams
 }
 
-kinesis: Kinesis Data Streams {
+kinesis: Amazon Kinesis Data Streams {
   icon: ${ICON:Amazon-Kinesis}
 }
 
 consumers: Consumers {
-  analytics: Kinesis Analytics {
+  analytics: Amazon Kinesis Data Analytics {
     icon: ${ICON:Amazon-Kinesis}
   }
-  firehose: Kinesis Firehose {
+  firehose: Amazon Data Firehose {
     icon: ${ICON:Amazon-Kinesis}
   }
-  lambda: Lambda Processor {
+  lambda: AWS Lambda {
     icon: ${ICON:AWS-Lambda}
   }
 }
 
 destinations: Destinations {
-  s3: S3 Data Lake {
+  s3: Amazon S3 {
     icon: ${ICON:Amazon-Simple-Storage-Service}
   }
-  opensearch: OpenSearch {
+  opensearch: Amazon OpenSearch Service {
     icon: ${ICON:Amazon-OpenSearch-Service}
   }
-  redshift: Redshift {
+  redshift: Amazon Redshift {
     icon: ${ICON:Amazon-Redshift}
   }
 }
@@ -644,7 +644,7 @@ user: User {
 }
 
 frontend: Frontend {
-  cloudfront: CloudFront {
+  cloudfront: Amazon CloudFront {
     icon: ${ICON:Amazon-CloudFront}
   }
   react: React App
@@ -691,10 +691,10 @@ bedrock_fm: Amazon Bedrock FM {
 }
 
 observability: Observability {
-  cw: CloudWatch {
+  cw: Amazon CloudWatch {
     icon: ${ICON:Amazon-CloudWatch}
   }
-  xray: X-Ray
+  xray: AWS X-Ray
 }
 
 user -> frontend.cloudfront: HTTPS
@@ -753,7 +753,7 @@ tools: Backend Tools {
 }
 
 observability: Observability {
-  cw: CloudWatch {
+  cw: Amazon CloudWatch {
     icon: ${ICON:Amazon-CloudWatch}
   }
 }
@@ -786,7 +786,7 @@ user: User {
   shape: person
 }
 
-api: API Gateway {
+api: Amazon API Gateway {
   icon: ${ICON:Amazon-API-Gateway}
 }
 
@@ -807,7 +807,7 @@ kb: Knowledge Base {
 }
 
 actions: Action Groups {
-  fn: Lambda Function {
+  fn: AWS Lambda {
     icon: ${ICON:AWS-Lambda}
   }
 }
@@ -839,13 +839,13 @@ api -> user: filtered answer
         d2_source="""direction: right
 
 trigger: Event Trigger {
-  apigw: API Gateway {
+  apigw: Amazon API Gateway {
     icon: ${ICON:Amazon-API-Gateway}
   }
-  eventbridge: EventBridge {
+  eventbridge: Amazon EventBridge {
     icon: ${ICON:Amazon-EventBridge}
   }
-  s3_event: S3 Events {
+  s3_event: Amazon S3 {
     icon: ${ICON:Amazon-Simple-Storage-Service}
   }
 }
@@ -854,7 +854,7 @@ processing: Processing {
   lambda_pre: Preprocessing {
     icon: ${ICON:AWS-Lambda}
   }
-  stepfn: Step Functions {
+  stepfn: AWS Step Functions {
     icon: ${ICON:AWS-Step-Functions}
   }
 }
@@ -863,7 +863,7 @@ inference: Inference {
   bedrock: Amazon Bedrock {
     icon: ${ICON:Amazon-Bedrock}
   }
-  sagemaker: SageMaker Endpoint {
+  sagemaker: Amazon SageMaker {
     icon: ${ICON:Amazon-SageMaker}
   }
 }
@@ -908,18 +908,18 @@ postprocess.lambda_post -> output.s3_out: archive
         category='aws',
         d2_source="""direction: down
 
-dns: Route 53 {
+dns: Amazon Route 53 {
   icon: ${ICON:Amazon-Route-53}
 }
 
 region_a: US-East-1 {
-  apigw_a: API Gateway {
+  apigw_a: Amazon API Gateway {
     icon: ${ICON:Amazon-API-Gateway}
   }
-  lambda_a: Lambda {
+  lambda_a: AWS Lambda {
     icon: ${ICON:AWS-Lambda}
   }
-  ddb_a: DynamoDB {
+  ddb_a: Amazon DynamoDB {
     icon: ${ICON:Amazon-DynamoDB}
   }
 
@@ -928,13 +928,13 @@ region_a: US-East-1 {
 }
 
 region_b: EU-West-1 {
-  apigw_b: API Gateway {
+  apigw_b: Amazon API Gateway {
     icon: ${ICON:Amazon-API-Gateway}
   }
-  lambda_b: Lambda {
+  lambda_b: AWS Lambda {
     icon: ${ICON:AWS-Lambda}
   }
-  ddb_b: DynamoDB {
+  ddb_b: Amazon DynamoDB {
     icon: ${ICON:Amazon-DynamoDB}
   }
 
@@ -968,7 +968,7 @@ edge: Edge Protection {
   waf: AWS WAF {
     icon: ${ICON:AWS-WAF}
   }
-  cloudfront: CloudFront {
+  cloudfront: Amazon CloudFront {
     icon: ${ICON:Amazon-CloudFront}
   }
 }
@@ -980,34 +980,34 @@ auth: Authentication {
 }
 
 api: API Security {
-  apigw: API Gateway {
+  apigw: Amazon API Gateway {
     icon: ${ICON:Amazon-API-Gateway}
   }
 }
 
 compute: Compute {
-  lambda: Lambda (IAM Roles) {
+  lambda: AWS Lambda {
     icon: ${ICON:AWS-Lambda}
   }
-  secrets: Secrets Manager {
+  secrets: AWS Secrets Manager {
     icon: ${ICON:AWS-Secrets-Manager}
   }
 }
 
 data: Data Layer {
-  ddb: DynamoDB (Encrypted) {
+  ddb: Amazon DynamoDB {
     icon: ${ICON:Amazon-DynamoDB}
   }
 }
 
 monitoring: Monitoring {
-  guardduty: GuardDuty {
+  guardduty: Amazon GuardDuty {
     icon: ${ICON:Amazon-GuardDuty}
   }
-  cloudtrail: CloudTrail {
+  cloudtrail: AWS CloudTrail {
     icon: ${ICON:AWS-CloudTrail}
   }
-  cloudwatch: CloudWatch {
+  cloudwatch: Amazon CloudWatch {
     icon: ${ICON:Amazon-CloudWatch}
   }
 }
@@ -1047,19 +1047,19 @@ client: Client {
   shape: person
 }
 
-cdn: CloudFront {
+cdn: Amazon CloudFront {
   icon: ${ICON:Amazon-CloudFront}
 }
 
-api: API Gateway {
+api: Amazon API Gateway {
   icon: ${ICON:Amazon-API-Gateway}
 }
 
-lambda: Lambda {
+lambda: AWS Lambda {
   icon: ${ICON:AWS-Lambda}
 }
 
-db: DynamoDB {
+db: Amazon DynamoDB {
   icon: ${ICON:Amazon-DynamoDB}
 }
 
@@ -1205,7 +1205,7 @@ bedrock: Amazon Bedrock {
   }
 }
 
-opensearch: OpenSearch {
+opensearch: Amazon OpenSearch Service {
   icon: ${ICON:Amazon-OpenSearch-Service}
 }
 
