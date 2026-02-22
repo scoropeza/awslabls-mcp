@@ -139,6 +139,49 @@ MIN_TIMEOUT = 1
 # Output subdirectory name
 OUTPUT_SUBDIRECTORY = 'generated-diagrams'
 
+# --- Scenario defaults ---
+
+DEFAULT_ANIMATE_INTERVAL = 1500  # ms between scenario animation frames
+DEFAULT_SCENARIO_PAD = 200  # Extra padding (px) for scenario diagrams to fit near: elements
+
+# Valid D2 near: positions for title and explanation placement
+VALID_NEAR_POSITIONS = (
+    'top-left',
+    'top-center',
+    'top-right',
+    'center-left',
+    'center-right',
+    'bottom-left',
+    'bottom-center',
+    'bottom-right',
+)
+
+# Theme → highlight color for scenario vars injection.
+# Most themes work well with AWS orange. Overrides for clashing palettes.
+THEME_HIGHLIGHT_COLORS: dict[int, str] = {
+    300: '#00FF41',  # Terminal: green matches the aesthetic
+    101: '#1E88E5',  # Orange Creamsicle: blue contrasts orange palette
+}
+DEFAULT_HIGHLIGHT_COLOR = '#FF9900'  # AWS orange — works for most themes
+
+
+def get_highlight_for_theme(theme: int | None) -> str:
+    """Return a highlight color with good contrast for the given theme.
+
+    Most themes work well with AWS orange (#FF9900). Specific overrides
+    exist for themes where orange clashes with the palette.
+
+    Args:
+        theme: D2 theme ID, or None for default theme.
+
+    Returns:
+        Hex color string suitable for scenario highlight styling.
+    """
+    if theme is not None and theme in THEME_HIGHLIGHT_COLORS:
+        return THEME_HIGHLIGHT_COLORS[theme]
+    return DEFAULT_HIGHLIGHT_COLOR
+
+
 # --- Font support ---
 
 # Font family registry: name -> {variant: [candidate TTF filenames]}

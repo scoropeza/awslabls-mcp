@@ -254,6 +254,60 @@ class TestRenderD2:
                 assert '--animate-interval' not in call_args
 
     @pytest.mark.asyncio
+    async def test_render_with_pad(self):
+        """Test that --pad flag is passed to D2 CLI when pad is set."""
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+        mock_proc.returncode = 0
+        create_mock = AsyncMock(return_value=mock_proc)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch(
+                    'awslabs.aws_diagram_mcp_server.d2_renderer.shutil.which',
+                    return_value='/usr/local/bin/d2',
+                ),
+                patch(
+                    'awslabs.aws_diagram_mcp_server.d2_renderer.asyncio.create_subprocess_exec',
+                    create_mock,
+                ),
+            ):
+                await render_d2(
+                    d2_source='a -> b',
+                    output_dir=tmpdir,
+                    pad=200,
+                )
+                call_args = create_mock.call_args[0]
+                assert '--pad' in call_args
+                assert '200' in call_args
+
+    @pytest.mark.asyncio
+    async def test_render_without_pad(self):
+        """Test that --pad flag is NOT passed when pad is None."""
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b'', b''))
+        mock_proc.returncode = 0
+        create_mock = AsyncMock(return_value=mock_proc)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch(
+                    'awslabs.aws_diagram_mcp_server.d2_renderer.shutil.which',
+                    return_value='/usr/local/bin/d2',
+                ),
+                patch(
+                    'awslabs.aws_diagram_mcp_server.d2_renderer.asyncio.create_subprocess_exec',
+                    create_mock,
+                ),
+            ):
+                await render_d2(
+                    d2_source='a -> b',
+                    output_dir=tmpdir,
+                )
+                call_args = create_mock.call_args[0]
+                assert '--pad' not in call_args
+
+    @pytest.mark.asyncio
     async def test_render_with_elk_layout(self):
         """Test that layout engine is passed to D2 CLI."""
         mock_proc = AsyncMock()

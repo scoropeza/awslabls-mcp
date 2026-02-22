@@ -17,6 +17,7 @@
 from awslabs.aws_diagram_mcp_server.examples import (
     get_available_categories,
     get_examples,
+    get_scenario_examples,
 )
 
 
@@ -87,6 +88,30 @@ class TestGetExamples:
             assert has_arrow or has_colon or has_steps, (
                 f'Example {name} has no recognizable D2 content'
             )
+
+
+class TestGetScenarioExamples:
+    """Tests for get_scenario_examples function."""
+
+    def test_scenario_examples_not_empty(self):
+        """Test that scenario examples are returned."""
+        examples = get_scenario_examples()
+        assert len(examples) > 0
+
+    def test_scenario_examples_contain_scenarios_block(self):
+        """Test that every scenario example has scenarios: in its D2 source."""
+        examples = get_scenario_examples()
+        for name, ex in examples.items():
+            assert 'scenarios:' in ex.d2_source, (
+                f'Scenario example {name} missing scenarios: block'
+            )
+
+    def test_scenario_examples_are_subset_of_all(self):
+        """Test that scenario examples are a subset of all examples."""
+        all_examples = get_examples()
+        scenario_examples = get_scenario_examples()
+        for name in scenario_examples:
+            assert name in all_examples, f'Scenario example {name} not found in all examples'
 
 
 class TestGetAvailableCategories:

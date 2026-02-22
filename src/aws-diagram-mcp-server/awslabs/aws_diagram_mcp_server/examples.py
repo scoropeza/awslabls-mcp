@@ -1035,9 +1035,12 @@ monitoring.cloudwatch -> compute: alerts {
         title='Animated Data Flow',
         description=(
             'Animated connection lines showing data flow through a serverless web '
-            'application. Uses style.animated: true on connections for moving dashes. '
-            'All nodes stay in fixed positions — only connections animate. '
-            'Green connections show the return path.'
+            'application. Each connection declares style.animated: true inline in the '
+            'D2 source to produce moving dashes. This is different from the animated=True '
+            'tool flag, which applies a global glob to ALL connections at once. '
+            'Use inline style.animated when you want selective animation (e.g., green '
+            'return-path connections vs forward-path). '
+            'All nodes stay in fixed positions — only connections animate.'
         ),
         category='animation',
         uses_animation=True,
@@ -1093,85 +1096,134 @@ cdn -> client: response {
 }
 """,
     ),
-    'animation_scenario_multi_agent': DiagramExample(
-        title='Multi-Agent SRE Assistant (Scenarios)',
+    'animation_scenario_customer_support': DiagramExample(
+        title='Multi-Agent Customer Support (Scenarios)',
         description=(
-            'AgentCore multi-agent SRE architecture with two alternate incident response '
-            'scenarios. Uses D2 scenarios: to show different paths through the same '
-            'architecture. Scenario 1: K8s infrastructure investigation. Scenario 2: '
-            'application log analysis. Inactive agents are dimmed per scenario. '
-            'Based on the AWS multi-agent SRE assistant pattern. '
-            'Requires SVG output with animate-interval for scenario transitions.'
+            'Customer support multi-agent system on AgentCore Runtime with three '
+            'scenario frames showing different request routing paths. '
+            'Use with generate-scenario tool — pass title="Multi-Agent Customer '
+            'Support" and description="Scenarios show three request routing '
+            'paths:\\n1. **Order Lookup** — route to order agent, query DynamoDB\\n'
+            '2. **Product Inquiry** — route to product agent, search knowledge '
+            'base\\n3. **Billing** — route to billing agent, call billing system". '
+            'The tool auto-injects vars (with highlight color), title, and '
+            'explanation blocks — do NOT include them in D2 source. '
+            'The ${highlight} variable is provided by the tool based on theme. '
+            'All nodes and connections are defined in the base diagram to keep '
+            'layout stable across frames. Scenarios only apply style overrides '
+            'using (a -> b)[0] connection references: animated dashes and highlight '
+            'stroke on the active path, animated pulsing border on active nodes, '
+            'and dimmed opacity on inactive elements.'
         ),
         category='animation',
         uses_animation=True,
         d2_source="""direction: right
 
-user: SRE Engineer {
+customer: Customer {
   shape: person
 }
 
 supervisor: Supervisor Agent {
-  icon: ${ICON:Amazon-Bedrock}
-  style.stroke: "#FF9900"
+  icon: ${ICON:Amazon-Bedrock-AgentCore}
+  style.stroke: ${highlight}
 }
 
-agents: Collaborator Agents {
-  k8s: K8s Infrastructure {
-    icon: ${ICON:Amazon-Elastic-Kubernetes-Service}
+agents: Support Agents {
+  order: Order Lookup {
+    icon: ${ICON:Amazon-Bedrock-AgentCore}
   }
-  logs: App Logs Analyzer {
-    icon: ${ICON:Amazon-CloudWatch}
+  product: Product Knowledge {
+    icon: ${ICON:Amazon-Bedrock-AgentCore}
   }
-  metrics: Perf Metrics {
+  billing: Billing {
+    icon: ${ICON:Amazon-Bedrock-AgentCore}
+  }
+}
+
+data: Data Sources {
+  orders_db: Amazon DynamoDB {
+    icon: ${ICON:Amazon-DynamoDB}
+  }
+  kb: Amazon Bedrock KB {
     icon: ${ICON:Amazon-Bedrock}
   }
-  runbooks: Runbook Executor {
+  billing_api: Billing System {
     icon: ${ICON:AWS-Lambda}
   }
 }
 
-memory: AgentCore Memory {
+fm: Amazon Bedrock FM {
   icon: ${ICON:Amazon-Bedrock}
 }
 
-user -> supervisor: incident alert
-supervisor -> agents.k8s
-supervisor -> agents.logs
-supervisor -> agents.metrics
-supervisor -> agents.runbooks
-supervisor -> memory: recall history
+memory: AgentCore Memory {
+  icon: ${ICON:Amazon-Bedrock-AgentCore}
+}
+
+# SCENARIO PATTERN: Define all connections in base, modify only styles in scenarios.
+# Use (a -> b)[0] connection references — never write "a -> b" inside scenarios
+# (that creates new arrows instead of modifying existing ones).
+customer -> supervisor: support request
+supervisor -> agents.order
+supervisor -> agents.product
+supervisor -> agents.billing
+supervisor -> memory: recall context
+supervisor -> fm: model inference
+agents.order -> data.orders_db
+agents.product -> data.kb
+agents.billing -> data.billing_api
 
 scenarios: {
-  infra_investigation: {
-    user -> supervisor: pod crash loop {
-      style.animated: true
-    }
-    supervisor -> agents.k8s: investigate pods {
-      style.animated: true
-      style.stroke: "#FF9900"
-    }
-    supervisor -> agents.metrics: check CPU/memory {
-      style.animated: true
-      style.stroke: "#FF9900"
-    }
-    agents.logs.style.opacity: 0.3
-    agents.runbooks.style.opacity: 0.3
+  order_lookup: {
+    (customer -> supervisor)[0].label: order lookup
+    (customer -> supervisor)[0].style.animated: true
+    (customer -> supervisor)[0].style.stroke: ${highlight}
+    (supervisor -> agents.order)[0].style.animated: true
+    (supervisor -> agents.order)[0].style.stroke: ${highlight}
+    (agents.order -> data.orders_db)[0].style.animated: true
+    (agents.order -> data.orders_db)[0].style.stroke: ${highlight}
+    agents.order.style.stroke: ${highlight}
+    agents.order.style.animated: true
+    data.orders_db.style.stroke: ${highlight}
+    data.orders_db.style.animated: true
+    agents.product.style.opacity: 0.3
+    agents.billing.style.opacity: 0.3
+    data.kb.style.opacity: 0.3
+    data.billing_api.style.opacity: 0.3
   }
-  log_analysis: {
-    user -> supervisor: 500 error spike {
-      style.animated: true
-    }
-    supervisor -> agents.logs: analyze errors {
-      style.animated: true
-      style.stroke: "#FF9900"
-    }
-    supervisor -> agents.runbooks: execute remediation {
-      style.animated: true
-      style.stroke: "#FF9900"
-    }
-    agents.k8s.style.opacity: 0.3
-    agents.metrics.style.opacity: 0.3
+  product_question: {
+    (customer -> supervisor)[0].label: product inquiry
+    (customer -> supervisor)[0].style.animated: true
+    (customer -> supervisor)[0].style.stroke: ${highlight}
+    (supervisor -> agents.product)[0].style.animated: true
+    (supervisor -> agents.product)[0].style.stroke: ${highlight}
+    (agents.product -> data.kb)[0].style.animated: true
+    (agents.product -> data.kb)[0].style.stroke: ${highlight}
+    agents.product.style.stroke: ${highlight}
+    agents.product.style.animated: true
+    data.kb.style.stroke: ${highlight}
+    data.kb.style.animated: true
+    agents.order.style.opacity: 0.3
+    agents.billing.style.opacity: 0.3
+    data.orders_db.style.opacity: 0.3
+    data.billing_api.style.opacity: 0.3
+  }
+  billing_inquiry: {
+    (customer -> supervisor)[0].label: billing inquiry
+    (customer -> supervisor)[0].style.animated: true
+    (customer -> supervisor)[0].style.stroke: ${highlight}
+    (supervisor -> agents.billing)[0].style.animated: true
+    (supervisor -> agents.billing)[0].style.stroke: ${highlight}
+    (agents.billing -> data.billing_api)[0].style.animated: true
+    (agents.billing -> data.billing_api)[0].style.stroke: ${highlight}
+    agents.billing.style.stroke: ${highlight}
+    agents.billing.style.animated: true
+    data.billing_api.style.stroke: ${highlight}
+    data.billing_api.style.animated: true
+    agents.order.style.opacity: 0.3
+    agents.product.style.opacity: 0.3
+    data.orders_db.style.opacity: 0.3
+    data.kb.style.opacity: 0.3
   }
 }
 """,
@@ -1182,7 +1234,10 @@ scenarios: {
             'Bedrock RAG pipeline with animated connections showing the data flow: '
             'question → retrieve → semantic search → augment → generate → respond. '
             'Green animated connections show the return path with retrieved data. '
-            'Uses style.animated: true for moving dashes on all connections.'
+            'Each connection declares style.animated: true inline in the D2 source '
+            'for selective animation control. This is different from the animated=True '
+            'tool flag, which applies animation to ALL connections via a global glob. '
+            'Use inline declarations when forward and return paths need different colors.'
         ),
         category='animation',
         uses_animation=True,
@@ -1266,6 +1321,20 @@ def get_examples(category: str | None = None) -> dict[str, DiagramExample]:
         name: example
         for name, example in _EXAMPLES.items()
         if example.category.lower() == cat_lower
+    }
+
+
+def get_scenario_examples() -> dict[str, DiagramExample]:
+    """Get examples that use D2 scenarios: blocks.
+
+    Returns only examples whose D2 source contains a ``scenarios:`` block,
+    suitable for use with the generate-scenario tool.
+
+    Returns:
+        Dictionary mapping example name to DiagramExample.
+    """
+    return {
+        name: example for name, example in _EXAMPLES.items() if 'scenarios:' in example.d2_source
     }
 
 

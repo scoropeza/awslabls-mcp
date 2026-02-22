@@ -242,6 +242,7 @@ async def render_d2(
     three_d: bool = False,
     animated: bool = False,
     font_family: str | None = None,
+    pad: int | None = None,
     timeout: int = DEFAULT_TIMEOUT,
     workspace_dir: str | None = None,
 ) -> D2RenderResult:
@@ -263,6 +264,7 @@ async def render_d2(
         three_d: Apply 3D effect to rectangular shapes via glob.
         animated: Apply animated dashes to all connections via glob.
         font_family: Font family name from FONT_FAMILIES registry (auto-detected from system).
+        pad: Padding in pixels around the diagram (D2 default is 100).
         timeout: Maximum render time in seconds.
         workspace_dir: User workspace directory; output goes to generated-diagrams/ subdirectory.
 
@@ -320,6 +322,9 @@ async def render_d2(
 
     if animate_interval is not None and output_format == 'svg':
         args.extend(['--animate-interval', str(animate_interval)])
+
+    if pad is not None:
+        args.extend(['--pad', str(pad)])
 
     # Resolve and inject font flags (skip in sketch mode — D2 uses its own hand-drawn fonts)
     if font_family and not sketch:
